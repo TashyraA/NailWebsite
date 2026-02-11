@@ -210,7 +210,7 @@ const AdminTimeSlots = () => {
         <Card className="p-6">
           <h3 className="text-lg font-semibold mb-4">Add New Time Slot</h3>
           <form onSubmit={handleAddTimeSlot} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="time">Time (24-hour format)</Label>
                 <Input
@@ -239,7 +239,7 @@ const AdminTimeSlots = () => {
                 />
               </div>
               
-              <div className="flex items-end">
+              <div className="sm:col-span-2 lg:col-span-1 flex items-end">
                 <Button 
                   type="submit" 
                   disabled={addTimeSlotMutation.isPending}
@@ -268,65 +268,124 @@ const AdminTimeSlots = () => {
               {timeSlots.map((slot) => (
                 <div
                   key={slot.id}
-                  className={`flex items-center justify-between p-4 rounded-lg border ${
+                  className={`p-3 sm:p-4 rounded-lg border ${
                     slot.enabled 
                       ? 'bg-green-50 border-green-200' 
                       : 'bg-gray-50 border-gray-200'
                   }`}
                 >
-                  <div className="flex items-center gap-4">
-                    <div className="font-mono text-lg font-semibold">
-                      {formatTime12Hour(slot.time)}
+                  {/* Mobile Layout */}
+                  <div className="block sm:hidden space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="font-mono text-lg font-semibold">
+                        {formatTime12Hour(slot.time)}
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        {slot.duration_minutes} min
+                      </div>
                     </div>
-                    <div className="text-sm text-gray-600">
-                      {slot.duration_minutes} minutes
+                    
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor={`enable-${slot.id}`} className="text-sm">
+                          Enabled
+                        </Label>
+                        <Switch
+                          id={`enable-${slot.id}`}
+                          checked={slot.enabled}
+                          onCheckedChange={(checked) =>
+                            updateTimeSlotMutation.mutate({
+                              id: slot.id,
+                              enabled: checked
+                            })
+                          }
+                        />
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min="15"
+                          max="480"
+                          step="15"
+                          value={slot.duration_minutes}
+                          onChange={(e) =>
+                            updateTimeSlotMutation.mutate({
+                              id: slot.id,
+                              duration: parseInt(e.target.value)
+                            })
+                          }
+                          className="w-16 text-sm"
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => deleteTimeSlotMutation.mutate(slot.id)}
+                          disabled={deleteTimeSlotMutation.isPending}
+                          className="text-red-600 hover:text-red-800 p-1"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                  
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor={`enable-${slot.id}`} className="text-sm">
-                        Enabled
-                      </Label>
-                      <Switch
-                        id={`enable-${slot.id}`}
-                        checked={slot.enabled}
-                        onCheckedChange={(checked) =>
-                          updateTimeSlotMutation.mutate({
-                            id: slot.id,
-                            enabled: checked
-                          })
-                        }
-                      />
+
+                  {/* Desktop Layout */}
+                  <div className="hidden sm:flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="font-mono text-lg font-semibold">
+                        {formatTime12Hour(slot.time)}
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        {slot.duration_minutes} minutes
+                      </div>
                     </div>
                     
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        min="15"
-                        max="480"
-                        step="15"
-                        value={slot.duration_minutes}
-                        onChange={(e) =>
-                          updateTimeSlotMutation.mutate({
-                            id: slot.id,
-                            duration: parseInt(e.target.value)
-                          })
-                        }
-                        className="w-20"
-                      />
-                      <span className="text-sm text-gray-500">min</span>
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor={`enable-${slot.id}`} className="text-sm">
+                          Enabled
+                        </Label>
+                        <Switch
+                          id={`enable-${slot.id}`}
+                          checked={slot.enabled}
+                          onCheckedChange={(checked) =>
+                            updateTimeSlotMutation.mutate({
+                              id: slot.id,
+                              enabled: checked
+                            })
+                          }
+                        />
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min="15"
+                          max="480"
+                          step="15"
+                          value={slot.duration_minutes}
+                          onChange={(e) =>
+                            updateTimeSlotMutation.mutate({
+                              id: slot.id,
+                              duration: parseInt(e.target.value)
+                            })
+                          }
+                          className="w-20"
+                        />
+                        <span className="text-sm text-gray-500">min</span>
+                      </div>
+                      
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => deleteTimeSlotMutation.mutate(slot.id)}
+                        disabled={deleteTimeSlotMutation.isPending}
+                        className="text-red-600 hover:text-red-800"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
-                    
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => deleteTimeSlotMutation.mutate(slot.id)}
-                      disabled={deleteTimeSlotMutation.isPending}
-                      className="text-red-600 hover:text-red-800"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
                   </div>
                 </div>
               ))}

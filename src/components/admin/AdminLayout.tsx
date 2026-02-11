@@ -46,21 +46,19 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
   return (
     <div className="flex min-h-screen bg-gray-50">
       {/* Mobile Header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-gray-900 to-gray-800 text-white p-4 flex items-center justify-between">
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-pink-200 to-pink-300 text-gray-800 p-4 flex items-center justify-between shadow-lg">
         <Link to="/" className="flex items-center gap-3">
-          <div className="bg-white p-1 rounded-lg">
-            <img 
-              src="/logo.png" 
-              alt="InLoveNailz Logo" 
-              className="h-8 w-auto object-contain"
-            />
-          </div>
+          <img 
+            src="/logo.png" 
+            alt="InLoveNailz Logo" 
+            className="h-8 w-auto object-contain"
+          />
         </Link>
         <Button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           variant="ghost"
           size="sm"
-          className="text-white hover:bg-gray-700"
+          className="text-gray-800 hover:bg-pink-400/50"
         >
           {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
         </Button>
@@ -69,7 +67,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
       {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
         <div className="lg:hidden fixed inset-0 z-40 bg-black bg-opacity-50" onClick={() => setIsMobileMenuOpen(false)}>
-          <div className="fixed top-16 left-0 right-0 bg-gradient-to-b from-gray-900 to-gray-800 text-white max-h-[calc(100vh-4rem)] overflow-y-auto">
+          <div className="fixed top-16 left-0 right-0 bg-gradient-to-b from-pink-200 to-pink-300 text-gray-800 max-h-[calc(100vh-4rem)] overflow-y-auto shadow-lg">
             <nav className="p-4">
               <ul className="space-y-2">
                 {navItems.map(item => (
@@ -80,7 +78,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
                       className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
                         isActive(item.path)
                           ? 'bg-gradient-to-r from-pink-500 to-pink-700 text-white shadow-lg'
-                          : 'text-gray-300 hover:bg-gray-700'
+                          : 'text-gray-700 hover:bg-pink-400/50'
                       }`}
                     >
                       <item.icon size={20} />
@@ -89,11 +87,11 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
                   </li>
                 ))}
               </ul>
-              <div className="mt-4 pt-4 border-t border-gray-700">
+              <div className="mt-4 pt-4 border-t border-pink-400">
                 <Button
                   onClick={handleLogout}
                   variant="ghost"
-                  className="w-full justify-start text-gray-300 hover:text-white hover:bg-gray-700"
+                  className="w-full justify-start text-gray-700 hover:text-gray-900 hover:bg-pink-400/50"
                 >
                   <LogOut size={20} className="mr-3" />
                   Logout
@@ -105,16 +103,14 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
       )}
 
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:block w-64 bg-gradient-to-b from-gray-900 to-gray-800 text-white fixed h-full">
-        <div className="p-6 border-b border-gray-700">
+      <aside className="hidden lg:block w-64 bg-gradient-to-b from-pink-200 to-pink-300 text-gray-800 fixed h-full shadow-lg">
+        <div className="p-6 border-b border-pink-400">
           <Link to="/" className="flex items-center gap-3">
-            <div className="bg-white p-2 rounded-lg">
-              <img 
-                src="/logo.png" 
-                alt="InLoveNailz Logo" 
-                className="h-10 w-auto object-contain"
-              />
-            </div>
+            <img 
+              src="/logo.png" 
+              alt="InLoveNailz Logo" 
+              className="h-10 w-auto object-contain"
+            />
           </Link>
         </div>
 
@@ -127,7 +123,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
                   className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
                     isActive(item.path)
                       ? 'bg-gradient-to-r from-pink-500 to-pink-700 text-white shadow-lg'
-                      : 'text-gray-300 hover:bg-gray-700'
+                      : 'text-gray-700 hover:bg-pink-400/50'
                   }`}
                 >
                   <item.icon size={20} />
@@ -138,11 +134,11 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
           </ul>
         </nav>
 
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-700">
+        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-pink-400">
           <Button
             onClick={handleLogout}
             variant="ghost"
-            className="w-full justify-start text-gray-300 hover:text-white hover:bg-gray-700"
+            className="w-full justify-start text-gray-700 hover:text-gray-900 hover:bg-pink-400/50"
           >
             <LogOut size={20} className="mr-3" />
             Logout
@@ -151,7 +147,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 lg:ml-64 pt-16 lg:pt-0 p-4 lg:p-8">
+      <main className="flex-1 lg:ml-64 pt-20 lg:pt-8 p-4 lg:p-8">
         {children}
       </main>
     </div>
