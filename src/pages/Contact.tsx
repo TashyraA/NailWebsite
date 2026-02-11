@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/lib/supabase';
 
 const Contact = () => {
   const { toast } = useToast();
@@ -21,19 +22,90 @@ const Contact = () => {
     e.preventDefault();
     setIsSubmitting(true);
 
-    console.log('Contact form submitted:', formData);
-    console.log('Email will be sent to: brianalehota@gmail.com');
+    try {
+      console.log('Contact form submitted:', formData);
 
-    // Simulate email sending
-    await new Promise(resolve => setTimeout(resolve, 1000));
+      // Create contact email HTML
+      const contactEmailHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: 'Cormorant Garamond', serif; background-color: #FFE9EF; margin: 0; padding: 20px; }
+            .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+            .header { background: linear-gradient(135deg, #FFBCCD, #FFC9D7); padding: 40px 20px; text-align: center; }
+            .header h1 { color: #333; margin: 0; font-size: 32px; }
+            .content { padding: 30px; color: #333; }
+            .footer { background: #FFE9EF; padding: 20px; text-align: center; color: #666; font-size: 14px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>💌 New Contact Message</h1>
+            </div>
+            <div class="content">
+              <h2 style="color: #FF8CAA; margin-top: 0;">Contact Details</h2>
+              <p><strong>Name:</strong> ${formData.name}</p>
+              <p><strong>Email:</strong> ${formData.email}</p>
+              ${formData.phone ? `<p><strong>Phone:</strong> ${formData.phone}</p>` : ''}
+              
+              <h3 style="color: #FF8CAA;">Message:</h3>
+              <div style="background: #FFE9EF; padding: 20px; border-radius: 8px; border-left: 4px solid #FF8CAA;">
+                <p style="margin: 0;">${formData.message.replace(/\n/g, '<br>')}</p>
+              </div>
+              
+              <p style="margin-top: 20px;">
+                <strong>Reply to:</strong> 
+                <a href="mailto:${formData.email}?subject=Re: Your message to InLoveNailz" style="color: #FF8CAA;">${formData.email}</a>
+              </p>
+            </div>
+            <div class="footer">
+              <p>This message was sent from the InLoveNailz contact form</p>
+              <p>📧 <a href="https://inlovenailz.com" style="color: #FF8CAA;">inlovenailz.com</a></p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
 
-    toast({
-      title: 'Message sent!',
-      description: "We'll get back to you as soon as possible.",
-    });
+      // Send email via Supabase function
+      const { data, error } = await supabase.functions.invoke('send-email', {
+        body: {
+          to: 'brianalehota@gmail.com',
+          subject: `💌 New Contact Message from ${formData.name}`,
+          html: contactEmailHtml
+        }
+      });
 
-    setFormData({ name: '', email: '', phone: '', message: '' });
-    setIsSubmitting(false);
+      if (error) {
+        console.error('Failed to send contact email:', error);
+        toast({
+          title: 'Error sending message',
+          description: 'There was a problem sending your message. Please try again or contact us directly.',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      console.log('Contact email sent successfully:', data);
+
+      toast({
+        title: 'Message sent!',
+        description: "We'll get back to you as soon as possible.",
+      });
+
+      setFormData({ name: '', email: '', phone: '', message: '' });
+    } catch (error) {
+      console.error('Contact form submission error:', error);
+      toast({
+        title: 'Error sending message',
+        description: 'There was a problem sending your message. Please try again or contact us directly.',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

@@ -24,22 +24,22 @@ const Home = () => {
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
-      <section className="relative bg-gradient-to-br from-[#FFE9EF] via-[#FFC9D7] to-[#FFBCCD] py-20 overflow-hidden">
+      <section className="relative bg-gradient-to-br from-[#FFE9EF] via-[#FFC9D7] to-[#FFBCCD] py-12 sm:py-16 md:py-20 overflow-hidden">
         <div className="absolute inset-0 bg-[url('/hero-background.jpg')] bg-cover bg-center opacity-35"></div>
         
         <div className="container mx-auto px-4 relative">
           <div className="max-w-3xl mx-auto text-center">
-            <div className="flex items-center justify-center gap-4 mb-8 overflow-hidden">
-              <h1 className="text-6xl md:text-8xl font-semibold animate-slide-in-right" style={{ fontFamily: '"Cormorant Garamond", serif' }}>
+            <div className="flex items-center justify-center gap-2 sm:gap-4 mb-6 sm:mb-8 overflow-hidden">
+              <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-semibold animate-slide-in-right" style={{ fontFamily: '"Cormorant Garamond", serif' }}>
                 Welcome
               </h1>
-              <h1 className="text-6xl md:text-8xl font-semibold animate-slide-in-left" style={{ fontFamily: '"Cormorant Garamond", serif' }}>
+              <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-semibold animate-slide-in-left" style={{ fontFamily: '"Cormorant Garamond", serif' }}>
                 Beautiful
               </h1>
             </div>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link to="/services">
-                <Button size="lg" className="bg-[#FF8CAA] hover:bg-[#FF6B96] text-white font-semibold shadow-lg hover:shadow-xl transition-all">
+              <Link to="/services" className="w-full sm:w-auto">
+                <Button size="lg" className="w-full sm:w-auto bg-[#FF8CAA] hover:bg-[#FF6B96] text-white font-semibold shadow-lg hover:shadow-xl transition-all">
                   Browse Services
                   <ArrowRight className="ml-2" size={20} />
                 </Button>
@@ -48,7 +48,7 @@ const Home = () => {
           </div>
 
           {/* Features */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-16 max-w-4xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mt-12 sm:mt-16 max-w-4xl mx-auto">
             <div className="bg-[#FFE9EF] rounded-2xl p-6 shadow-lg hover:shadow-xl transition-shadow border border-gray-800">
               <div className="bg-[#FF8CAA] w-12 h-12 rounded-xl flex items-center justify-center mb-4">
                 <Star className="text-white" size={24} />

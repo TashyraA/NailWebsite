@@ -24,19 +24,19 @@ const ServiceCard: React.FC<ServiceCardProps> = ({ service }) => {
 
   return (
     <div className="group bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 hover:-translate-y-1">
-      <div className="relative h-64 overflow-hidden">
+      <div className="relative h-40 sm:h-48 md:h-56 overflow-hidden">
         <img
           src={service.images[0]}
           alt={service.title}
           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
         />
-        <Badge className="absolute top-4 right-4 bg-white/90 text-pink-600 border-0 backdrop-blur-sm">
+        <Badge className="absolute top-2 right-2 sm:top-4 sm:right-4 bg-white/90 text-pink-600 border-0 backdrop-blur-sm text-xs sm:text-sm">
           {service.category}
         </Badge>
       </div>
 
-      <div className="p-6">
-        <h3 className="text-xl font-bold text-gray-800 mb-2">{service.title}</h3>
+      <div className="p-3 sm:p-4 md:p-6">
+        <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-2">{service.title}</h3>
         <p className="text-gray-600 text-sm mb-4 line-clamp-2">{service.description}</p>
 
         <div className="space-y-2 mb-4">
