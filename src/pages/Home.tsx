@@ -88,12 +88,12 @@ const Home = () => {
           <div className="max-w-6xl mx-auto">
             {/* Antique Frame Container */}
             <div 
-              className="relative border-8 border-amber-800 rounded-lg shadow-2xl p-6"
+              className="relative border-8 border-gray-800 rounded-lg shadow-2xl p-6"
               style={{
                 background: `url(/glitter-texture-2.jpg)`,
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
-                borderImage: 'linear-gradient(45deg, #8B4513, #D4A574, #8B4513, #D4A574) 1',
+                borderImage: 'linear-gradient(45deg, #000000, #333333, #000000, #333333) 1',
                 borderStyle: 'solid',
                 borderWidth: '8px'
               }}
@@ -103,7 +103,7 @@ const Home = () => {
                 {/* Portrait */}
                 <div className="flex justify-center">
                   <div className="relative w-20 h-24">
-                    <div className="absolute inset-0 rounded-[50%] overflow-hidden border-3 border-amber-800 shadow-xl">
+                    <div className="absolute inset-0 rounded-[50%] overflow-hidden border-3 border-gray-800 shadow-xl">
                       <img
                         src="/briana-portrait.jpg"
                         alt="Briana - Licensed Manicurist"
@@ -123,7 +123,7 @@ const Home = () => {
                 </div>
                 
                 {/* Text */}
-                <div className="bg-white/30 backdrop-blur-sm border-2 border-amber-800 rounded-lg p-4">
+                <div className="bg-white/30 backdrop-blur-sm border-2 border-gray-800 rounded-lg p-4">
                   <p className="text-sm font-bold text-gray-800 leading-relaxed">
                     Hi, my name is Briana. I am a licensed manicurist based in Cleveland, OH. 
                     My passion in life has always been beauty. I make others not only look beautiful, 
@@ -138,7 +138,7 @@ const Home = () => {
                 {/* Left - Portrait */}
                 <div className="flex-shrink-0">
                   <div className="relative w-40 h-48">
-                    <div className="absolute inset-0 rounded-[50%] overflow-hidden border-4 border-amber-800 shadow-xl">
+                    <div className="absolute inset-0 rounded-[50%] overflow-hidden border-4 border-gray-800 shadow-xl">
                       <img
                         src="/briana-portrait.jpg"
                         alt="Briana - Licensed Manicurist"
@@ -159,7 +159,7 @@ const Home = () => {
 
                 {/* Right - Mission Text */}
                 <div className="flex-1">
-                  <div className="bg-white/30 backdrop-blur-sm border-2 border-amber-800 rounded-lg p-6">
+                  <div className="bg-white/30 backdrop-blur-sm border-2 border-gray-800 rounded-lg p-6">
                     <p className="text-lg font-bold text-gray-800 leading-relaxed">
                       Hi, my name is Briana. I am a licensed manicurist based in Cleveland, OH. 
                       My passion in life has always been beauty. I make others not only look beautiful, 
