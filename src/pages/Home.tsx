@@ -39,38 +39,38 @@ const Home = () => {
             </div>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link to="/services" className="w-full sm:w-auto">
-                <Button size="lg" className="w-full sm:w-auto bg-[#FF8CAA] hover:bg-[#FF6B96] text-white font-semibold shadow-lg hover:shadow-xl transition-all">
+                <Button className="w-full sm:w-auto bg-[#FF8CAA] hover:bg-[#FF6B96] text-white font-semibold shadow-lg hover:shadow-xl transition-all px-6 py-2">
                   Browse Services
-                  <ArrowRight className="ml-2" size={20} />
+                  <ArrowRight className="ml-2" size={16} />
                 </Button>
               </Link>
             </div>
           </div>
 
           {/* Features */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mt-12 sm:mt-16 max-w-4xl mx-auto">
-            <div className="bg-[#FFE9EF] rounded-2xl p-6 shadow-lg hover:shadow-xl transition-shadow border border-gray-800">
-              <div className="bg-[#FF8CAA] w-12 h-12 rounded-xl flex items-center justify-center mb-4">
-                <Star className="text-white" size={24} />
+          <div className="grid grid-cols-3 gap-3 sm:gap-4 md:gap-6 mt-12 sm:mt-16 max-w-4xl mx-auto">
+            <div className="bg-[#FFE9EF] rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 shadow-lg hover:shadow-xl transition-shadow border border-gray-800">
+              <div className="bg-[#FF8CAA] w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-lg sm:rounded-xl flex items-center justify-center mb-2 sm:mb-3 md:mb-4">
+                <Star className="text-white" size={16} />
               </div>
-              <h3 className="text-lg font-semibold mb-2 text-gray-800">Premium Quality</h3>
-              <p className="text-gray-700 text-sm">Top-tier products and expert techniques</p>
+              <h3 className="text-xs sm:text-sm md:text-lg font-semibold mb-1 sm:mb-2 text-gray-800">Premium Quality</h3>
+              <p className="text-gray-700 text-xs sm:text-xs md:text-sm">Top-tier products and expert techniques</p>
             </div>
 
-            <div className="bg-[#FFE9EF] rounded-2xl p-6 shadow-lg hover:shadow-xl transition-shadow border border-gray-800">
-              <div className="bg-[#FF8CAA] w-12 h-12 rounded-xl flex items-center justify-center mb-4">
-                <Clock className="text-white" size={24} />
+            <div className="bg-[#FFE9EF] rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 shadow-lg hover:shadow-xl transition-shadow border border-gray-800">
+              <div className="bg-[#FF8CAA] w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-lg sm:rounded-xl flex items-center justify-center mb-2 sm:mb-3 md:mb-4">
+                <Clock className="text-white" size={16} />
               </div>
-              <h3 className="text-lg font-semibold mb-2 text-gray-800">Flexible Booking</h3>
-              <p className="text-gray-700 text-sm">Easy online scheduling at your convenience</p>
+              <h3 className="text-xs sm:text-sm md:text-lg font-semibold mb-1 sm:mb-2 text-gray-800">Flexible Booking</h3>
+              <p className="text-gray-700 text-xs sm:text-xs md:text-sm">Easy online scheduling at your convenience</p>
             </div>
 
-            <div className="bg-[#FFE9EF] rounded-2xl p-6 shadow-lg hover:shadow-xl transition-shadow border border-gray-800">
-              <div className="bg-[#FF8CAA] w-12 h-12 rounded-xl flex items-center justify-center mb-4">
-                <Award className="text-white" size={24} />
+            <div className="bg-[#FFE9EF] rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 shadow-lg hover:shadow-xl transition-shadow border border-gray-800">
+              <div className="bg-[#FF8CAA] w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-lg sm:rounded-xl flex items-center justify-center mb-2 sm:mb-3 md:mb-4">
+                <Award className="text-white" size={16} />
               </div>
-              <h3 className="text-lg font-semibold mb-2 text-gray-800">Certified Artists</h3>
-              <p className="text-gray-700 text-sm">Trained professionals dedicated to excellence</p>
+              <h3 className="text-xs sm:text-sm md:text-lg font-semibold mb-1 sm:mb-2 text-gray-800">Certified Artists</h3>
+              <p className="text-gray-700 text-xs sm:text-xs md:text-sm">Trained professionals dedicated to excellence</p>
             </div>
           </div>
         </div>
