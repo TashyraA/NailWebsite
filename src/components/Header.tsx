@@ -15,7 +15,33 @@ const Header = () => {
     <>
     <header className="sticky top-0 z-50 bg-[#FFE9EF]/90 backdrop-blur-md border-b border-[#FFC9D7] shadow-sm">
       <div className="container mx-auto px-4 py-3">
-        <div className="flex items-center justify-between">
+        {/* Mobile Header - Centered Logo */}
+        <div className="md:hidden flex items-center justify-between relative">
+          <div className="absolute inset-0 flex justify-center items-center">
+            <Link to="/" className="flex items-center gap-2 group">
+              <img 
+                src="/logo.png" 
+                alt="InLoveNailz Logo" 
+                className="h-28 w-auto object-contain group-hover:scale-105 transition-transform"
+              />
+            </Link>
+          </div>
+          <div className="relative z-10 ml-auto">
+            <Link to="/cart" className="relative">
+              <div className="p-2 rounded-lg hover:bg-[#FFC9D7] transition-colors">
+                <ShoppingCart className="text-[#FF8CAA]" size={22} />
+                {itemCount > 0 && (
+                  <Badge className="absolute -top-1 -right-1 bg-[#FFBCCD] text-white border-0 min-w-[20px] h-5 flex items-center justify-center text-xs font-semibold">
+                    {itemCount}
+                  </Badge>
+                )}
+              </div>
+            </Link>
+          </div>
+        </div>
+
+        {/* Desktop Header - Original Layout */}
+        <div className="hidden md:flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 group">
             <img 
               src="/logo.png" 
@@ -24,7 +50,7 @@ const Header = () => {
             />
           </Link>
 
-          <nav className="hidden md:flex items-center gap-10">
+          <nav className="flex items-center gap-10">
             <Link
               to="/"
               className={`font-medium transition-all text-lg text-gray-700 hover:text-gray-900 pb-1 px-3 ${

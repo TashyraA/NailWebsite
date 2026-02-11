@@ -83,31 +83,34 @@ const Home = () => {
       {carouselImages.length > 0 && <ServiceCarousel images={carouselImages} />}
 
       {/* Mission Section */}
-      <section className="bg-gradient-to-r from-[#FFBCCD] to-[#FFC9D7] py-6">
+      <section className="bg-gradient-to-r from-[#FFBCCD] to-[#FFC9D7] py-8">
         <div className="container mx-auto px-4">
-          <div className="max-w-4xl mx-auto">
+          <div className="max-w-5xl mx-auto">
             {/* Mobile Layout - Heart centered above text */}
             <div className="block md:hidden text-center">
-              <div className="flex justify-center mb-3">
+              <div className="flex justify-center mb-4">
                 <img
                   src="/heart-decoration.png"
                   alt="Heart decoration"
-                  className="w-12 h-12 object-contain"
+                  className="w-16 h-16 object-contain"
                 />
               </div>
-              <div className="bg-white/20 backdrop-blur-sm border-2 border-gray-800 rounded-lg p-3">
+              <div className="bg-white/20 backdrop-blur-sm border-2 border-gray-800 rounded-lg p-4">
                 <p className="text-sm font-bold text-gray-800 leading-relaxed">
-                  Hi, I'm Briana, a licensed manicurist in Cleveland, OH. My passion is making you look and feel beautiful through nail art. I treat every client with love, care, and proficiency. Your nail dreams can come true!
+                  Hi, my name is Briana. I am a licensed manicurist based in Cleveland, OH. 
+                  My passion in life has always been beauty. I make others not only look beautiful, 
+                  but feel beautiful as well through doing nails. I handle every client with love, 
+                  care, respect, and proficiency. Your nail dreams can come true in one appointment.
                 </p>
               </div>
             </div>
 
             {/* Desktop Layout - Image left, text right */}
-            <div className="hidden md:flex gap-6 items-center">
+            <div className="hidden md:flex gap-8 items-center">
               {/* Left - Portrait */}
               <div className="flex-shrink-0">
-                <div className="relative w-32 h-40">
-                  <div className="absolute inset-0 rounded-[50%] overflow-hidden border-2 border-gray-800 shadow-lg">
+                <div className="relative w-48 h-60">
+                  <div className="absolute inset-0 rounded-[50%] overflow-hidden border-3 border-gray-800 shadow-xl">
                     <img
                       src="/briana-portrait.jpg"
                       alt="Briana - Licensed Manicurist"
@@ -119,16 +122,19 @@ const Home = () => {
 
               {/* Right - Mission Text */}
               <div className="flex-1">
-                <div className="bg-white/20 backdrop-blur-sm border-2 border-gray-800 rounded-lg p-4">
-                  <p className="text-base font-bold text-gray-800 leading-relaxed">
-                    Hi, I'm Briana, a licensed manicurist in Cleveland, OH. My passion is making you look and feel beautiful through nail art. I treat every client with love, care, and proficiency. Your nail dreams can come true!
+                <div className="bg-white/20 backdrop-blur-sm border-2 border-gray-800 rounded-lg p-6">
+                  <p className="text-lg font-bold text-gray-800 leading-relaxed">
+                    Hi, my name is Briana. I am a licensed manicurist based in Cleveland, OH. 
+                    My passion in life has always been beauty. I make others not only look beautiful, 
+                    but feel beautiful as well through doing nails. I handle every client with love, 
+                    care, respect, and proficiency. Your nail dreams can come true in one appointment.
                   </p>
                 </div>
               </div>
             </div>
 
             {/* Book Now Button */}
-            <div className="flex justify-center mt-4">
+            <div className="flex justify-center mt-6">
               <Link to="/services">
                 <Button className="bg-[#FF8CAA] hover:bg-[#FF6B96] text-white font-semibold shadow-lg px-8 py-2">
                   Book Now
