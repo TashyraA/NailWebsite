@@ -83,68 +83,56 @@ const Home = () => {
       {carouselImages.length > 0 && <ServiceCarousel images={carouselImages} />}
 
       {/* Mission Section */}
-      <section className="bg-gradient-to-r from-[#FFBCCD] to-[#FFC9D7] py-16">
+      <section className="bg-gradient-to-r from-[#FFBCCD] to-[#FFC9D7] py-6">
         <div className="container mx-auto px-4">
-          {/* Decorative Vintage Frame */}
-          <div className="max-w-6xl mx-auto relative">
-            {/* Outer frame border with glitter background */}
-            <div className="border-4 border-gray-800 rounded-lg p-8 relative" style={{
-              backgroundImage: 'url(/glitter-texture-2.jpg)',
-              backgroundSize: 'cover',
-              backgroundPosition: 'center'
-            }}>
-              {/* Inner decorative border - solid background to hide glitter behind content */}
-              <div className="border-2 border-gray-800 rounded-md p-8 relative bg-gradient-to-r from-[#FFBCCD] to-[#FFC9D7]">
-                {/* Corner decorations */}
-                <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-gray-800 -translate-x-2 -translate-y-2"></div>
-                <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-gray-800 translate-x-2 -translate-y-2"></div>
-                <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-gray-800 -translate-x-2 translate-y-2"></div>
-                <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-gray-800 translate-x-2 translate-y-2"></div>
-                
-                {/* Content inside frame */}
-                <div className="flex flex-col md:flex-row gap-8 items-center justify-center">
-                  {/* Left Side - Oval Portrait */}
-                  <div className="flex justify-center md:justify-start flex-shrink-0">
-                    <div className="relative w-64 h-80">
-                      <div className="absolute inset-0 rounded-[50%] overflow-hidden border-4 border-gray-800 shadow-2xl">
-                        <img
-                          src="/briana-portrait.jpg"
-                          alt="Briana - Licensed Manicurist"
-                          className="w-full h-full object-cover object-top"
-                        />
-                      </div>
-                    </div>
-                  </div>
+          <div className="max-w-4xl mx-auto">
+            {/* Mobile Layout - Heart centered above text */}
+            <div className="block md:hidden text-center">
+              <div className="flex justify-center mb-3">
+                <img
+                  src="/heart-decoration.png"
+                  alt="Heart decoration"
+                  className="w-12 h-12 object-contain"
+                />
+              </div>
+              <div className="bg-white/20 backdrop-blur-sm border-2 border-gray-800 rounded-lg p-3">
+                <p className="text-sm font-bold text-gray-800 leading-relaxed">
+                  Hi, I'm Briana, a licensed manicurist in Cleveland, OH. My passion is making you look and feel beautiful through nail art. I treat every client with love, care, and proficiency. Your nail dreams can come true!
+                </p>
+              </div>
+            </div>
 
-                  {/* Center - Heart Decoration */}
-                  <div className="flex justify-center items-center flex-shrink-0">
+            {/* Desktop Layout - Image left, text right */}
+            <div className="hidden md:flex gap-6 items-center">
+              {/* Left - Portrait */}
+              <div className="flex-shrink-0">
+                <div className="relative w-32 h-40">
+                  <div className="absolute inset-0 rounded-[50%] overflow-hidden border-2 border-gray-800 shadow-lg">
                     <img
-                      src="/heart-decoration.png"
-                      alt="Heart decoration"
-                      className="w-24 h-24 object-contain"
+                      src="/briana-portrait.jpg"
+                      alt="Briana - Licensed Manicurist"
+                      className="w-full h-full object-cover object-top"
                     />
                   </div>
+                </div>
+              </div>
 
-                  {/* Right Side - Mission Statement */}
-                  <div className="text-left space-y-4 flex-1">
-                    <p className="text-lg md:text-xl text-gray-800 leading-relaxed">
-                      Hi, my name is Briana. I am a licensed manicurist based in Cleveland, OH. 
-                      My passion in life has always been beauty. I have taken the opportunity to 
-                      make others not only look beautiful, but to feel beautiful as well through 
-                      doing nails. I handle every client with love, care, respect, and proficiency. 
-                      Your nail dreams can come true in one appointment.
-                    </p>
-                  </div>
+              {/* Right - Mission Text */}
+              <div className="flex-1">
+                <div className="bg-white/20 backdrop-blur-sm border-2 border-gray-800 rounded-lg p-4">
+                  <p className="text-base font-bold text-gray-800 leading-relaxed">
+                    Hi, I'm Briana, a licensed manicurist in Cleveland, OH. My passion is making you look and feel beautiful through nail art. I treat every client with love, care, and proficiency. Your nail dreams can come true!
+                  </p>
                 </div>
               </div>
             </div>
 
             {/* Book Now Button */}
-            <div className="flex justify-center mt-12">
-            <Link to="/services">
-              <Button size="lg" className="bg-[#FF8CAA] hover:bg-[#FF6B96] text-white font-semibold shadow-xl px-12 py-6 text-xl">
+            <div className="flex justify-center mt-4">
+              <Link to="/services">
+                <Button className="bg-[#FF8CAA] hover:bg-[#FF6B96] text-white font-semibold shadow-lg px-8 py-2">
                   Book Now
-                  <ArrowRight className="ml-3" size={24} />
+                  <ArrowRight className="ml-2" size={18} />
                 </Button>
               </Link>
             </div>

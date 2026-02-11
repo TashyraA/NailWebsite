@@ -12,7 +12,8 @@ export const login = async (email: string, password: string): Promise<boolean> =
   // Simulate API delay
   await new Promise(resolve => setTimeout(resolve, 500));
   
-  if (email === ADMIN_CREDENTIALS.email && password === ADMIN_CREDENTIALS.password) {
+  // Make email comparison case-insensitive
+  if (email.toLowerCase() === ADMIN_CREDENTIALS.email.toLowerCase() && password === ADMIN_CREDENTIALS.password) {
     localStorage.setItem('isAdminAuthenticated', 'true');
     return true;
   }
