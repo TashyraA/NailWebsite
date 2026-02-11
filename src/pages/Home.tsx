@@ -86,22 +86,33 @@ const Home = () => {
       <section className="bg-gradient-to-r from-[#FFBCCD] to-[#FFC9D7] py-8">
         <div className="container mx-auto px-4">
           <div className="max-w-5xl mx-auto">
-            {/* Mobile Layout - Heart centered above text */}
-            <div className="block md:hidden text-center">
-              <div className="flex justify-center mb-4">
-                <img
-                  src="/heart-decoration.png"
-                  alt="Heart decoration"
-                  className="w-16 h-16 object-contain"
-                />
-              </div>
-              <div className="bg-white/20 backdrop-blur-sm border-2 border-gray-800 rounded-lg p-4">
-                <p className="text-sm font-bold text-gray-800 leading-relaxed">
-                  Hi, my name is Briana. I am a licensed manicurist based in Cleveland, OH. 
-                  My passion in life has always been beauty. I make others not only look beautiful, 
-                  but feel beautiful as well through doing nails. I handle every client with love, 
-                  care, respect, and proficiency. Your nail dreams can come true in one appointment.
-                </p>
+            {/* Mobile Layout - Image left, text right */}
+            <div className="block md:hidden">
+              <div className="flex gap-4 items-center">
+                {/* Left - Portrait */}
+                <div className="flex-shrink-0">
+                  <div className="relative w-20 h-24">
+                    <div className="absolute inset-0 rounded-[50%] overflow-hidden border-2 border-gray-800 shadow-lg" style={{background: 'url(/glitter-texture.jpg)', backgroundSize: 'cover'}}>
+                      <img
+                        src="/briana-portrait.jpg"
+                        alt="Briana - Licensed Manicurist"
+                        className="w-full h-full object-cover object-top"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right - Mission Text */}
+                <div className="flex-1">
+                  <div className="bg-white/20 backdrop-blur-sm border-2 border-gray-800 rounded-lg p-4" style={{background: 'linear-gradient(rgba(255,255,255,0.2), rgba(255,255,255,0.2)), url(/glitter-texture.jpg)', backgroundSize: 'cover'}}>
+                    <p className="text-sm font-bold text-gray-800 leading-relaxed">
+                      Hi, my name is Briana. I am a licensed manicurist based in Cleveland, OH. 
+                      My passion in life has always been beauty. I make others not only look beautiful, 
+                      but feel beautiful as well through doing nails. I handle every client with love, 
+                      care, respect, and proficiency. Your nail dreams can come true in one appointment.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -110,7 +121,7 @@ const Home = () => {
               {/* Left - Portrait */}
               <div className="flex-shrink-0">
                 <div className="relative w-48 h-60">
-                  <div className="absolute inset-0 rounded-[50%] overflow-hidden border-3 border-gray-800 shadow-xl">
+                  <div className="absolute inset-0 rounded-[50%] overflow-hidden border-3 border-gray-800 shadow-xl" style={{background: 'url(/glitter-texture.jpg)', backgroundSize: 'cover'}}>
                     <img
                       src="/briana-portrait.jpg"
                       alt="Briana - Licensed Manicurist"
@@ -122,7 +133,7 @@ const Home = () => {
 
               {/* Right - Mission Text */}
               <div className="flex-1">
-                <div className="bg-white/20 backdrop-blur-sm border-2 border-gray-800 rounded-lg p-6">
+                <div className="bg-white/20 backdrop-blur-sm border-2 border-gray-800 rounded-lg p-6" style={{background: 'linear-gradient(rgba(255,255,255,0.2), rgba(255,255,255,0.2)), url(/glitter-texture.jpg)', backgroundSize: 'cover'}}>
                   <p className="text-lg font-bold text-gray-800 leading-relaxed">
                     Hi, my name is Briana. I am a licensed manicurist based in Cleveland, OH. 
                     My passion in life has always been beauty. I make others not only look beautiful, 
