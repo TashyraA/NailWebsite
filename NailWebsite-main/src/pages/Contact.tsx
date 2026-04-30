@@ -73,6 +73,7 @@ const Contact = () => {
       const { data, error } = await supabase.functions.invoke('send-email', {
         body: {
           to: 'brianalehota@gmail.com',
+          reply_to: formData.email,
           subject: `💌 New Contact Message from ${formData.name}`,
           html: contactEmailHtml
         }

@@ -7,6 +7,7 @@ interface EmailRequest {
   to: string;
   subject: string;
   html: string;
+  reply_to?: string;
 }
 
 Deno.serve(async (req) => {
@@ -16,10 +17,11 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { to, subject, html }: EmailRequest = await req.json();
+    const { to, subject, html, reply_to }: EmailRequest = await req.json();
 
     console.log('Sending email to:', to);
     console.log('Subject:', subject);
+    if (reply_to) console.log('Reply-To:', reply_to);
 
     // Get Resend API key from environment
     const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
@@ -38,18 +40,25 @@ Deno.serve(async (req) => {
     }
 
     // Send email via Resend API
+    const emailBody: any = {
+      from: 'InLoveNailz <team@inlovenailz.com>',
+      to: [to],
+      subject: subject,
+      html: html
+    };
+
+    // Add reply-to if provided
+    if (reply_to) {
+      emailBody.reply_to = reply_to;
+    }
+
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${RESEND_API_KEY}`
       },
-      body: JSON.stringify({
-        from: 'Briana <brianalehota@gmail.com>',
-        to: [to],
-        subject: subject,
-        html: html
-      })
+      body: JSON.stringify(emailBody)
     });
 
     const responseData = await res.json();
