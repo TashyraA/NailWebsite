@@ -18,12 +18,8 @@ const Header = () => {
         {/* Mobile Header - Centered Logo */}
         <div className="md:hidden flex items-center justify-between relative">
           <div className="absolute inset-0 flex justify-center items-center">
-            <Link to="/" className="flex items-center gap-2 group">
-              <img 
-                src="/logo.png" 
-                alt="InLoveNailz Logo" 
-                className="h-28 w-auto object-contain group-hover:scale-105 transition-transform"
-              />
+            <Link to="/" className="flex items-center gap-2">
+              <img src="/logo.png" alt="InLove Nailz" className="h-12" />
             </Link>
           </div>
           <div className="relative z-10 ml-auto">
@@ -42,12 +38,8 @@ const Header = () => {
 
         {/* Desktop Header - Original Layout */}
         <div className="hidden md:flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2 group">
-            <img 
-              src="/logo.png" 
-              alt="InLoveNailz Logo" 
-              className="h-24 w-auto object-contain group-hover:scale-105 transition-transform"
-            />
+          <Link to="/" className="flex items-center gap-3">
+            <img src="/logo.png" alt="InLove Nailz" className="h-14" />
           </Link>
 
           <nav className="flex items-center gap-10">

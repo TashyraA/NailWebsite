@@ -78,7 +78,7 @@ export const getServiceById = async (id: string): Promise<Service | null> => {
       .single();
 
     if (error) {
-      console.error('Service not found:', error);
+      console.error(`Service not found for ID "${id}":`, error.message);
       return null;
     }
 
