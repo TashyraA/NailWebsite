@@ -12,6 +12,6 @@ export const stripePromise = stripePublishableKey ? loadStripe(stripePublishable
 
 export const STRIPE_CONFIG = {
   currency: 'usd',
-  depositPercentage: 0.5, // 50% deposit
+  depositPercentage: 0.5, // Legacy setting; Cal.com collects the fixed $20 booking deposit.
   minimumDeposit: 20, // Minimum $20 deposit
 };

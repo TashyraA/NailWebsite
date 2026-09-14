@@ -140,7 +140,7 @@ const Cart = () => {
               </div>
 
               <Button
-                onClick={() => navigate('/checkout')}
+                onClick={() => navigate('/book')}
                 className="w-full bg-[#FF8CAA] hover:bg-[#FF6B96] text-white font-semibold shadow-lg hover:shadow-xl transition-all"
                 size="lg"
               >

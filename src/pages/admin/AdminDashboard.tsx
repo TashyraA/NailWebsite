@@ -1,7 +1,7 @@
 import React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getAppointments } from '@/services/appointmentService';
-import { getServices } from '@/services/serviceSupabase';
+import { getServices } from '@/services/servicesData';
 import AdminLayout from '@/components/admin/AdminLayout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';

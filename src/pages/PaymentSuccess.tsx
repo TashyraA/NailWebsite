@@ -3,7 +3,6 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, Home, Calendar } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 
 const PaymentSuccess = () => {
@@ -22,31 +21,8 @@ const PaymentSuccess = () => {
     setIsProcessingEmails(true);
     
     try {
-      console.log('Sending balance payment emails for session:', sessionId);
-      
-      // Send balance payment confirmation emails
-      const { data, error } = await supabase.functions.invoke('send-balance-payment-emails', {
-        body: {
-          sessionId: sessionId
-        }
-      });
-      
-      console.log('Balance payment email response:', { data, error });
-      
-      if (error) {
-        console.error('Error sending balance payment emails:', error);
-        toast({
-          title: 'Email Error',
-          description: 'Payment completed but emails may not have been sent. Please contact us if you need confirmation.',
-          variant: 'destructive'
-        });
-      } else {
-        console.log('Balance payment confirmation emails sent successfully');
-        toast({
-          title: 'Emails Sent!',
-          description: 'Confirmation emails have been sent to you and our team.',
-        });
-      }
+      console.log('Balance payment completed:', sessionId);
+      toast({ title: 'Payment complete', description: 'Your payment has been recorded by Stripe.' });
     } catch (error) {
       console.error('Error processing balance payment emails:', error);
       toast({

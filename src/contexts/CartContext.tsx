@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { CartItem, Service } from '@/types';
-import { getServiceById } from '@/services/serviceSupabase';
+import { BOOKING_DEPOSIT, getServiceById } from '@/services/servicesData';
 
 interface CartContextType {
   items: CartItem[];
@@ -142,7 +142,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const getTotalDeposit = () => {
-    return items.reduce((total, item) => total + item.service.deposit * item.quantity, 0);
+    return items.length > 0 ? BOOKING_DEPOSIT : 0;
   };
 
   const getItemCount = () => {

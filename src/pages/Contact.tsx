@@ -6,7 +6,6 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/lib/supabase';
 
 const Contact = () => {
   const { toast } = useToast();
@@ -69,17 +68,17 @@ const Contact = () => {
         </html>
       `;
 
-      // Send email via Supabase function
-      const { data, error } = await supabase.functions.invoke('send-email', {
-        body: {
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           to: 'brianalehota@gmail.com',
           subject: `💌 New Contact Message from ${formData.name}`,
           html: contactEmailHtml
-        }
+        })
       });
-
-      if (error) {
-        console.error('Failed to send contact email:', error);
+      if (!response.ok) {
+        console.error('Failed to send contact email:', await response.text());
         toast({
           title: 'Error sending message',
           description: 'There was a problem sending your message. Please try again or contact us directly.',
@@ -88,7 +87,7 @@ const Contact = () => {
         return;
       }
 
-      console.log('Contact email sent successfully:', data);
+      console.log('Contact email sent successfully');
 
       toast({
         title: 'Message sent!',

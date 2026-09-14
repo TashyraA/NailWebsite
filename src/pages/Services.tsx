@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getServices } from '@/services/serviceSupabase';
+import { getServices } from '@/services/servicesData';
 import ServiceCard from '@/components/ServiceCard';
 import { Loader2 } from 'lucide-react';
 

@@ -1,16 +1,41 @@
 import { Service } from '@/types';
 
 const STORAGE_KEY = 'nail_salon_services';
+export const BOOKING_DEPOSIT = 20;
+
+const DEFAULT_SERVICES: Service[] = [
+  {
+    id: 'classic-set', title: 'Classic Full Set',
+    description: 'A timeless, polished set tailored to your preferred length and shape.',
+    price: 65, deposit: BOOKING_DEPOSIT, duration: 120, category: 'Full Sets', images: [], isActive: true,
+    createdAt: new Date('2025-01-01')
+  },
+  {
+    id: 'gel-manicure', title: 'Gel Manicure',
+    description: 'Long-lasting gel color with a clean, glossy finish.',
+    price: 45, deposit: BOOKING_DEPOSIT, duration: 60, category: 'Manicures', images: [], isActive: true,
+    createdAt: new Date('2025-01-01')
+  },
+  {
+    id: 'test-service', title: 'Test Service',
+    description: 'Temporary service for testing the cart, $20 deposit, calendar, and Stripe checkout flow.',
+    price: 80, deposit: BOOKING_DEPOSIT, duration: 120, category: 'Test Services', images: [], isActive: true,
+    createdAt: new Date('2025-01-01')
+  }
+];
 
 // Load services from localStorage or use default data
 const loadServices = (): Service[] => {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored) {
     console.log('Loading services from localStorage');
-    return JSON.parse(stored);
+    const storedServices = JSON.parse(stored).map((service: Service) => ({ ...service, deposit: BOOKING_DEPOSIT }));
+    return storedServices.some((service: Service) => service.id === 'test-service')
+      ? storedServices
+      : [...storedServices, DEFAULT_SERVICES.find(service => service.id === 'test-service')!];
   }
-  console.log('No services in storage, starting with empty array');
-  return [];
+  console.log('No services in storage, using default catalog');
+  return DEFAULT_SERVICES;
 };
 
 const saveServices = (services: Service[]) => {

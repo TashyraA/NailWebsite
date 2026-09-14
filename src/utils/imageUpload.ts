@@ -1,26 +1,20 @@
-// Image upload utility for handling multiple images
-// In production, this would upload to a cloud storage service like Cloudinary or AWS S3
-
 export const uploadImage = async (file: File): Promise<string> => {
   console.log('Uploading image:', file.name, 'Size:', file.size);
-  
-  // Simulate upload delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  // Convert file to base64 data URL for demo purposes
-  // In production, this would upload to cloud storage and return the URL
-  return new Promise((resolve, reject) => {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      console.log('Image converted to data URL');
-      resolve(result);
-    };
-    reader.onerror = () => {
-      reject(new Error('Failed to read file'));
-    };
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('Failed to read image'));
     reader.readAsDataURL(file);
   });
+
+  const response = await fetch('/api/upload-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dataUrl, fileName: file.name })
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Image upload failed');
+  return result.url;
 };
 
 export const uploadMultipleImages = async (files: File[]): Promise<string[]> => {

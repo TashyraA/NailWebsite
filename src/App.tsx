@@ -9,10 +9,10 @@ import Header from "@/components/Header";
 import Home from "@/pages/Home";
 import Services from "@/pages/Services";
 import Cart from "@/pages/Cart";
-import Checkout from "@/pages/Checkout";
 import BookingConfirmation from "@/pages/BookingConfirmation";
 import PaymentSuccess from "@/pages/PaymentSuccess";
 import Contact from "@/pages/Contact";
+import BookAppointment from "@/pages/BookAppointment";
 import AdminLogin from "@/pages/AdminLogin";
 import AdminDashboard from "@/pages/admin/AdminDashboard";
 import AdminServices from "@/pages/admin/AdminServices";
@@ -20,9 +20,6 @@ import AdminAppointments from "@/pages/admin/AdminAppointments";
 import AdminSchedule from "@/pages/admin/AdminSchedule";
 import AdminTimeSlots from "@/pages/admin/AdminTimeSlots";
 import NotFound from "@/pages/NotFound";
-import DatabaseTest from "@/pages/DatabaseTest";
-import EmailTest from "@/pages/EmailTest";
-import SimpleEmailTest from "@/pages/SimpleEmailTest";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -52,19 +49,11 @@ function App() {
               <Route path="/" element={<><Header /><Home /></>} />
               <Route path="/services" element={<><Header /><Services /></>} />
               <Route path="/cart" element={<><Header /><Cart /></>} />
-              <Route path="/checkout" element={<><Header /><Checkout /></>} />
+                <Route path="/checkout" element={<><Header /><BookAppointment /></>} />
               <Route path="/booking-confirmation" element={<><Header /><BookingConfirmation /></>} />
               <Route path="/payment-success" element={<><Header /><PaymentSuccess /></>} />
               <Route path="/contact" element={<><Header /><Contact /></>} />
-              
-              {/* Debug Routes - Remove in production */}
-              {process.env.NODE_ENV === 'development' && (
-                <>
-                  <Route path="/debug/database" element={<><Header /><DatabaseTest /></>} />
-                  <Route path="/debug/email" element={<><Header /><EmailTest /></>} />
-                  <Route path="/debug/simple-email" element={<><Header /><SimpleEmailTest /></>} />
-                </>
-              )}
+              <Route path="/book" element={<><Header /><BookAppointment /></>} />
               
               {/* Admin Routes */}
               <Route path="/admin/login" element={<AdminLogin />} />

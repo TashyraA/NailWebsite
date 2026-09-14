@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getAllServices, createService, updateService, deleteService } from '@/services/serviceSupabase';
+import { getAllServices, createService, updateService, deleteService } from '@/services/servicesData';
 import AdminLayout from '@/components/admin/AdminLayout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
