@@ -35,7 +35,13 @@ const BookAppointment = () => {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...form, appointmentDate: date, appointmentTime: time, services: items, totalPrice: total, depositPaid: deposit, balanceDue: balance })
       });
-      const result = await response.json();
+      const responseText = await response.text();
+      let result: { url?: string; error?: string };
+      try {
+        result = JSON.parse(responseText);
+      } catch {
+        throw new Error(responseText || `Server returned ${response.status}`);
+      }
       if (!response.ok || !result.url) throw new Error(result.error || 'Unable to start secure payment');
       window.location.assign(result.url);
     } catch (error: any) {
