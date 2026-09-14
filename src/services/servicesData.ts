@@ -30,10 +30,15 @@ const loadServices = (): Service[] => {
   if (stored) {
     console.log('Loading services from localStorage');
     const storedServices = JSON.parse(stored).map((service: Service) => ({ ...service, deposit: BOOKING_DEPOSIT }));
-    if (storedServices.some((service: Service) => service.id === 'test-service')) return storedServices;
-    const servicesWithTestService = [...storedServices, DEFAULT_SERVICES.find(service => service.id === 'test-service')!];
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(servicesWithTestService));
-    return servicesWithTestService;
+    if (storedServices.length === 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_SERVICES));
+      return DEFAULT_SERVICES;
+    }
+    const missingDefaults = DEFAULT_SERVICES.filter(defaultService => !storedServices.some((service: Service) => service.id === defaultService.id));
+    if (missingDefaults.length === 0) return storedServices;
+    const servicesWithDefaults = [...storedServices, ...missingDefaults];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(servicesWithDefaults));
+    return servicesWithDefaults;
   }
   console.log('No services in storage, using default catalog');
   return DEFAULT_SERVICES;
