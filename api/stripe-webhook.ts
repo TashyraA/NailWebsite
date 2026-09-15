@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { appUrl, verifyBooking } from './_booking';
 import { createBalancePaymentLink } from './_balance-payment';
 import { escapeHtml, sendEmail } from './_email';
