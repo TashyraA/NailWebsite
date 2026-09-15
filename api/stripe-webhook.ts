@@ -3,7 +3,7 @@ import { appUrl, verifyBooking } from './_booking';
 import { createBalancePaymentLink } from './_balance-payment';
 import { escapeHtml, sendEmail } from './_email';
 
-export const config = { runtime: 'nodejs', api: { bodyParser: false } };
+export const config = { api: { bodyParser: false } };
 
 const readRawBody = async (req: any): Promise<string> => {
   if (typeof req.rawBody === 'string') return req.rawBody;
