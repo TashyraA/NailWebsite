@@ -1,131 +1,343 @@
+
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=DM+Sans:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* =========================================
+   INLOVENAILZ — GLOBAL DESIGN SYSTEM
+========================================= */
+
 @layer base {
   :root {
-    --background: 350 100% 98%; /* #FFF7F8 */
-    --foreground: 330 60% 20%;
+    /* BRAND PALETTE */
+    --ivory-pink: #FFF7F8;
+    --blush: #F7DDE4;
+    --rose: #EFA1B7;
+    --berry: #963F60;
+    --charcoal: #29252B;
 
-    --card: 350 100% 98%;
-    --card-foreground: 330 60% 20%;
+    /* TYPOGRAPHY */
+    --font-heading: "Cormorant Garamond", serif;
+    --font-body: "DM Sans", sans-serif;
 
-    --popover: 330 100% 98%;
-    --popover-foreground: 330 60% 20%;
+    /* TAILWIND / SHADCN COLOR TOKENS */
+    /* Values are HSL channels, not hex. */
 
-    --primary: 338 100% 81%; /* #FFBCCD */
-    --primary-foreground: 330 60% 20%;
+    --background: 351 100% 98.4%;
+    --foreground: 280 7.3% 15.7%;
 
-    --secondary: 338 100% 87%; /* #FFC9D7 */
-    --secondary-foreground: 330 60% 20%;
+    --card: 0 0% 100%;
+    --card-foreground: 280 7.3% 15.7%;
 
-    --muted: 330 100% 95%;
-    --muted-foreground: 330 40% 40%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 280 7.3% 15.7%;
 
-    --accent: 338 100% 87%;
-    --accent-foreground: 330 60% 20%;
+    --primary: 337 40.2% 41.8%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 343 61.9% 91.8%;
+    --secondary-foreground: 337 40.2% 41.8%;
+
+    --muted: 343 61.9% 91.8%;
+    --muted-foreground: 335 6.1% 42%;
+
+    --accent: 343 61.9% 91.8%;
+    --accent-foreground: 337 40.2% 41.8%;
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 338 100% 87%;
-    --input: 338 100% 87%;
-    --ring: 338 100% 81%;
+    --border: 343 48% 88%;
+    --input: 343 48% 88%;
+    --ring: 337 40.2% 41.8%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
-    --sidebar-background: 0 0% 98%;
-
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* SIDEBAR */
+    --sidebar-background: 351 100% 98.4%;
+    --sidebar-foreground: 280 7.3% 15.7%;
+    --sidebar-primary: 337 40.2% 41.8%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 343 61.9% 91.8%;
+    --sidebar-accent-foreground: 337 40.2% 41.8%;
+    --sidebar-border: 343 48% 88%;
+    --sidebar-ring: 337 40.2% 41.8%;
   }
 
+  /* OPTIONAL DARK MODE */
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 280 7.3% 15.7%;
+    --foreground: 351 100% 98.4%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 330 12% 20%;
+    --card-foreground: 351 100% 98.4%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 330 12% 20%;
+    --popover-foreground: 351 100% 98.4%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 343 72.5% 78.4%;
+    --primary-foreground: 280 7.3% 15.7%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 337 24% 30%;
+    --secondary-foreground: 351 100% 98.4%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 337 18% 25%;
+    --muted-foreground: 343 30% 80%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 337 24% 30%;
+    --accent-foreground: 351 100% 98.4%;
 
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --border: 337 18% 32%;
+    --input: 337 18% 32%;
+    --ring: 343 72.5% 78.4%;
+
+    --sidebar-background: 330 12% 20%;
+    --sidebar-foreground: 351 100% 98.4%;
+    --sidebar-primary: 343 72.5% 78.4%;
+    --sidebar-primary-foreground: 280 7.3% 15.7%;
+    --sidebar-accent: 337 24% 30%;
+    --sidebar-accent-foreground: 351 100% 98.4%;
+    --sidebar-border: 337 18% 32%;
+    --sidebar-ring: 343 72.5% 78.4%;
   }
 }
+
+/* =========================================
+   GLOBAL BASE STYLES
+========================================= */
 
 @layer base {
   * {
     @apply border-border;
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 90px;
   }
 
   body {
     @apply bg-background text-foreground;
-    font-family: "Cormorant Garamond", serif;
-    font-optical-sizing: auto;
+
+    margin: 0;
+    min-height: 100vh;
+
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.7;
+
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
-  #root {
-    max-width: 1280px;
-    min-height: 100vh;
-    margin-inline: auto;
-    overflow-x: hidden;
-    background: #FFF7F8;
-  }
+  /* EDITORIAL HEADINGS */
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: "Cormorant Garamond", serif;
-    font-optical-sizing: auto;
+    font-family: var(--font-heading);
+    font-weight: 500;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
   }
 
+  h1 {
+    font-size: clamp(3rem, 6vw, 5.5rem);
+  }
+
+  h2 {
+    font-size: clamp(2.5rem, 4vw, 4rem);
+  }
+
+  h3 {
+    font-size: clamp(1.7rem, 2.5vw, 2.4rem);
+  }
+
+  /* BODY TEXT */
+
+  p, li, label, small {
+    font-family: var(--font-body);
+  }
+
+  /* FORM ELEMENTS */
+
   button, input, textarea, select {
-    font-family: "Cormorant Garamond", serif;
-    font-optical-sizing: auto;
+    font-family: var(--font-body);
+    font-size: 14px;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  /* IMAGES */
+
+  img {
+    max-width: 100%;
+  }
+
+  /* LINKS */
+
+  a {
+    transition:
+      color 0.25s ease,
+      background-color 0.25s ease;
+  }
+
+  /* ACCESSIBLE FOCUS */
+
+  :focus-visible {
+    outline: 2px solid var(--berry);
+    outline-offset: 3px;
+  }
+
+  /* TEXT SELECTION */
+
+  ::selection {
+    background: var(--blush);
+    color: var(--charcoal);
   }
 }
 
-/* Custom animations for hero text */
+/* =========================================
+   REUSABLE BRAND CLASSES
+========================================= */
+
+@layer components {
+  .font-heading {
+    font-family: var(--font-heading);
+  }
+
+  .font-body {
+    font-family: var(--font-body);
+  }
+
+  .brand-eyebrow {
+    font-family: var(--font-body);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--berry);
+  }
+
+  .brand-heading {
+    font-family: var(--font-heading);
+    font-weight: 500;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+  }
+
+  .brand-heading-accent {
+    font-family: var(--font-heading);
+    font-style: italic;
+    font-weight: 400;
+    color: var(--berry);
+  }
+
+  .brand-container {
+    width: 100%;
+    max-width: 1280px;
+    margin-inline: auto;
+    padding-inline: 24px;
+  }
+
+  .brand-section {
+    padding-block: 80px;
+  }
+
+  /* PRIMARY BUTTON */
+
+  .brand-button-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+
+    min-height: 46px;
+    padding: 12px 26px;
+
+    border: 1px solid var(--berry);
+    border-radius: 8px;
+
+    background: var(--berry);
+    color: #FFFFFF;
+
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 600;
+
+    transition:
+      background-color 0.25s ease,
+      transform 0.25s ease;
+  }
+
+  .brand-button-primary:hover {
+    background: #79324F;
+    transform: translateY(-2px);
+  }
+
+  /* SECONDARY BUTTON */
+
+  .brand-button-outline {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+
+    min-height: 46px;
+    padding: 12px 26px;
+
+    border: 1px solid var(--berry);
+    border-radius: 8px;
+
+    background: transparent;
+    color: var(--berry);
+
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 600;
+
+    transition:
+      background-color 0.25s ease,
+      transform 0.25s ease;
+  }
+
+  .brand-button-outline:hover {
+    background: var(--blush);
+  }
+
+  /* CARD SURFACE */
+
+  .brand-card {
+    background: #FFFFFF;
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+
+    box-shadow:
+      0 4px 18px rgba(41, 37, 43, 0.035);
+  }
+}
+
+/* =========================================
+   EXISTING HERO ANIMATIONS
+   Preserved for compatibility
+========================================= */
+
 @keyframes slide-in-right {
   0% {
     transform: translateX(100%);
     opacity: 0;
   }
+
   100% {
     transform: translateX(0);
     opacity: 1;
@@ -137,70 +349,140 @@
     transform: translateX(-100%);
     opacity: 0;
   }
+
   100% {
     transform: translateX(0);
     opacity: 1;
   }
 }
 
-@keyframes scroll-left {
-  0% {
-    transform: translateX(0);
-  }
-  100% {
-    transform: translateX(-50%);
-  }
-}
-
 .animate-slide-in-right {
   animation: slide-in-right 1s ease-out forwards;
-  font-family: "Cormorant Garamond", serif;
-  font-optical-sizing: auto;
 }
 
 .animate-slide-in-left {
   animation: slide-in-left 1s ease-out forwards;
-  font-family: "Cormorant Garamond", serif;
-  font-optical-sizing: auto;
 }
 
-/* Service Carousel Styles */
+/* =========================================
+   NAIL ART CAROUSEL
+   Preserves existing class names
+========================================= */
+
 .carousel-container {
   width: 100%;
   position: relative;
+  overflow: hidden;
+}
+
+@keyframes scroll-left {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-50%);
+  }
 }
 
 .carousel-track {
   display: flex;
-  animation: scroll-left 30s linear infinite;
-  width: fit-content;
+  align-items: stretch;
+
+  width: max-content;
+
+  animation: scroll-left 45s linear infinite;
+
+  will-change: transform;
 }
 
-.carousel-track:hover {
+.carousel-track:hover,
+.carousel-track:focus-within,
+.carousel-track.is-paused {
   animation-play-state: paused;
 }
 
 .carousel-item {
-  width: 150px;
-  height: 150px;
+  width: 175px;
+  aspect-ratio: 3 / 4;
+  height: auto;
+
   flex-shrink: 0;
-  margin: 0 6px;
-  border-radius: 8px;
+
+  margin: 0 7px;
+
+  border-radius: 10px;
   overflow: hidden;
+
+  background: var(--blush);
 }
+
+.carousel-item img {
+  width: 100%;
+  height: 100%;
+  display: block;
+
+  object-fit: cover;
+}
+
+/* TABLET */
 
 @media (min-width: 640px) {
   .carousel-item {
-    width: 200px;
-    height: 200px;
+    width: 210px;
     margin: 0 8px;
   }
 }
 
-@media (min-width: 768px) {
+/* DESKTOP */
+
+@media (min-width: 1024px) {
   .carousel-item {
-    width: 250px;
-    height: 250px;
+    width: 260px;
     margin: 0 10px;
+  }
+}
+
+/* =========================================
+   RESPONSIVE GLOBAL SPACING
+========================================= */
+
+@media (max-width: 768px) {
+  .brand-container {
+    padding-inline: 18px;
+  }
+
+  .brand-section {
+    padding-block: 55px;
+  }
+}
+
+/* =========================================
+   REDUCED MOTION ACCESSIBILITY
+========================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .animate-slide-in-right,
+  .animate-slide-in-left,
+  .carousel-track {
+    animation: none;
+  }
+
+  .carousel-container {
+    overflow-x: auto;
+  }
+
+  .brand-button-primary,
+  .brand-button-outline {
+    transition: none;
+  }
+
+  .brand-button-primary:hover,
+  .brand-button-outline:hover {
+    transform: none;
   }
 }

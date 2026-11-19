@@ -1,104 +1,487 @@
+
 import { Service } from '@/types';
 
 const STORAGE_KEY = 'nail_salon_services';
+const CATALOG_VERSION_KEY = 'nail_salon_catalog_version';
+
+// Updated version so existing browsers receive the new photo paths.
+const CATALOG_VERSION = 'briana-services-v2';
+
 export const BOOKING_DEPOSIT = 20;
 
+const CREATED_AT = new Date('2025-01-01');
+
+const makeService = (
+  id: string,
+  title: string,
+  description: string,
+  price: number,
+  duration: number,
+  category: string,
+  image?: string
+): Service => ({
+  id,
+  title,
+  description,
+  price,
+  deposit: BOOKING_DEPOSIT,
+  duration,
+  category,
+  images: image ? [image] : [],
+  isActive: true,
+  createdAt: CREATED_AT,
+});
+
 const DEFAULT_SERVICES: Service[] = [
-  {
-    id: 'classic-set', title: 'Classic Full Set',
-    description: 'A timeless, polished set tailored to your preferred length and shape.',
-    price: 65, deposit: BOOKING_DEPOSIT, duration: 120, category: 'Full Sets', images: [], isActive: true,
-    createdAt: new Date('2025-01-01')
-  },
-  {
-    id: 'gel-manicure', title: 'Gel Manicure',
-    description: 'Long-lasting gel color with a clean, glossy finish.',
-    price: 45, deposit: BOOKING_DEPOSIT, duration: 60, category: 'Manicures', images: [], isActive: true,
-    createdAt: new Date('2025-01-01')
-  },
-  {
-    id: 'test-service', title: 'Test Service',
-    description: 'Temporary service for testing the cart, $20 deposit, calendar, and Stripe checkout flow.',
-    price: 80, deposit: BOOKING_DEPOSIT, duration: 120, category: 'Test Services', images: [], isActive: true,
-    createdAt: new Date('2025-01-01')
-  }
+  // ==========================================
+  // ACRYLIC FULL SETS
+  // ==========================================
+
+  makeService(
+    'acrylic-short',
+    'Full Set Acrylic — Short',
+    'Short acrylic full set with one solid color.',
+    80,
+    90,
+    'Acrylic Full Sets',
+    '/services/IMG_1.png'
+  ),
+
+  makeService(
+    'acrylic-medium',
+    'Full Set Acrylic — Medium',
+    'Medium-length acrylic full set.',
+    95,
+    120,
+    'Acrylic Full Sets',
+    '/services/IMG_4.png'
+  ),
+
+  makeService(
+    'acrylic-long',
+    'Full Set Acrylic — Long',
+    'Long acrylic full set with one solid color.',
+    100,
+    90,
+    'Acrylic Full Sets',
+    '/services/IMG_2.png'
+  ),
+
+  makeService(
+    'acrylic-long-xl',
+    'Full Set Acrylic — Long / XL',
+    'Long to extra-long acrylic extensions. Pricing ranges from $100–$140 depending on the set.',
+    100,
+    150,
+    'Acrylic Full Sets',
+    '/services/IMG_5.png'
+  ),
+
+  makeService(
+    'freestyle-short',
+    'Freestyle Full Set — Short',
+    'Starting at $90. Freestyle designs may include gems, multiple colors, glitter, ombré, foils, and more.',
+    90,
+    90,
+    'Acrylic Full Sets',
+    '/services/IMG_3.png'
+  ),
+
+  makeService(
+    'acrylic-ombre',
+    'Acrylic Ombré Full Set',
+    'A soft, blended ombré acrylic manicure.',
+    85,
+    90,
+    'Acrylic Full Sets',
+    '/services/IMG_6.png'
+  ),
+
+  makeService(
+    'acrylic-overlay',
+    'Acrylic Overlay',
+    'Acrylic applied over the natural nails for added strength and a polished finish.',
+    75,
+    90,
+    'Acrylic Full Sets',
+    '/services/IMG_7.png'
+  ),
+
+  // ==========================================
+  // ACRYLIC FILLS
+  // ==========================================
+
+  makeService(
+    'acrylic-fill',
+    'Acrylic Fill',
+    'For existing acrylic sets with up to 3 weeks of nail growth.',
+    70,
+    60,
+    'Acrylic Fills'
+  ),
+
+  makeService(
+    'overlay-fill',
+    'Acrylic Overlay Fill',
+    'Maintenance fill for an existing acrylic overlay.',
+    60,
+    60,
+    'Acrylic Fills'
+  ),
+
+  makeService(
+    'overlay-fill-design',
+    'Acrylic Overlay Fill + Minimal Designs',
+    'Acrylic overlay maintenance with minimal nail designs.',
+    65,
+    90,
+    'Acrylic Fills'
+  ),
+
+  // ==========================================
+  // NAIL ADD-ONS
+  // ==========================================
+
+  makeService(
+    'soak-off',
+    'Soak Off',
+    'Removal of existing nail enhancements.',
+    20,
+    30,
+    'Nail Add-Ons'
+  ),
+
+  makeService(
+    'special-shapes',
+    'Special Nail Shapes',
+    'Add stiletto, almond, or duck nail shapes to your set.',
+    6,
+    10,
+    'Nail Add-Ons'
+  ),
+
+  makeService(
+    'french-tip',
+    'French Tips',
+    'Classic French-tip design add-on.',
+    10,
+    10,
+    'Nail Add-Ons'
+  ),
+
+  makeService(
+    'bling-french',
+    'Blinged-Out French Tips',
+    'French tips with added bling. Pricing ranges from $20–$30 depending on nail length.',
+    20,
+    30,
+    'Nail Add-Ons'
+  ),
+
+  makeService(
+    'nail-repair',
+    'Nail Repair',
+    'Starting at $6, up to $10 depending on nail length and design. Repairs within 3 days of the original appointment are complimentary.',
+    6,
+    10,
+    'Nail Add-Ons'
+  ),
+
+  // ==========================================
+  // PEDICURES & TOES
+  // ==========================================
+
+  makeService(
+    'gel-pedicure',
+    'Gel Pedicure',
+    'Pedicure service finished with gel polish.',
+    75,
+    50,
+    'Pedicures & Toes'
+  ),
+
+  makeService(
+    'gel-toe-polish-change',
+    'Gel Toe Polish Change',
+    'Includes gel polish removal, nail clipping, filing, and buffing.',
+    35,
+    30,
+    'Pedicures & Toes'
+  ),
+
+  makeService(
+    'acrylic-big-toes',
+    'Acrylic Big Toes',
+    'Acrylic enhancements for the big toenails.',
+    20,
+    15,
+    'Pedicures & Toes'
+  ),
+
+  makeService(
+    'acrylic-big-toe-fill',
+    'Acrylic Big Toe Fill',
+    'Maintenance fill for acrylic big toes.',
+    15,
+    10,
+    'Pedicures & Toes'
+  ),
+
+  makeService(
+    'acrylic-toes-full',
+    'Full Set Acrylic Toes',
+    'Full acrylic toenail set. Does not include a wet pedicure; book that separately if needed.',
+    80,
+    60,
+    'Pedicures & Toes'
+  ),
+
+  makeService(
+    'acrylic-toes-fill',
+    'All Acrylic Toes Fill',
+    'Maintenance fill for a full set of acrylic toenails.',
+    60,
+    60,
+    'Pedicures & Toes'
+  ),
+
+  makeService(
+    'acrylic-toes-freestyle',
+    'Full Set Acrylic Toe Freestyle',
+    'Acrylic toenail full set with freestyle designs.',
+    90,
+    90,
+    'Pedicures & Toes'
+  ),
+
+  makeService(
+    'french-big-toes',
+    'French Tips on Big Toes',
+    'French-tip design add-on for big toes.',
+    5,
+    5,
+    'Pedicures & Toes'
+  ),
+
+  // ==========================================
+  // KIDS SERVICES — 12 & UNDER
+  // ==========================================
+
+  makeService(
+    'kids-manicure',
+    'Kids Manicure',
+    'Manicure for children ages 12 and under.',
+    35,
+    30,
+    'Kids Services'
+  ),
+
+  makeService(
+    'kids-pedicure',
+    'Kids Pedicure',
+    'Pedicure for children ages 12 and under.',
+    50,
+    40,
+    'Kids Services'
+  ),
+
+  makeService(
+    'kids-toe-polish',
+    'Kids Toe Polish Change',
+    'Toenail polish change for children ages 12 and under.',
+    30,
+    20,
+    'Kids Services'
+  ),
+
+  // ==========================================
+  // MEN'S SERVICES
+  // ==========================================
+
+  makeService(
+    'mens-manicure',
+    "Men's Manicure",
+    'Includes a complimentary sugar scrub, hot towel, hand massage, and optional gel top coat.',
+    40,
+    40,
+    "Men's Services"
+  ),
+
+  makeService(
+    'mens-pedicure',
+    "Men's Pedicure",
+    'Pedicure service for men.',
+    65,
+    45,
+    "Men's Services"
+  ),
+
+  makeService(
+    'mens-gel-manicure',
+    "Men's Gel Manicure + Minimal Designs",
+    'Gel manicure with minimal nail designs.',
+    55,
+    60,
+    "Men's Services"
+  ),
 ];
 
-// Load services from localStorage or use default data
-const loadServices = (): Service[] => {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored) {
-    console.log('Loading services from localStorage');
-    const storedServices = JSON.parse(stored).map((service: Service) => ({ ...service, deposit: BOOKING_DEPOSIT }));
-    if (storedServices.length === 0) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_SERVICES));
-      return DEFAULT_SERVICES;
-    }
-    const missingDefaults = DEFAULT_SERVICES.filter(defaultService => !storedServices.some((service: Service) => service.id === defaultService.id));
-    if (missingDefaults.length === 0) return storedServices;
-    const servicesWithDefaults = [...storedServices, ...missingDefaults];
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(servicesWithDefaults));
-    return servicesWithDefaults;
+// ==========================================
+// LOCAL STORAGE
+// ==========================================
+
+const readStoredServices = (): Service[] | null => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+
+    if (!stored) return null;
+
+    const parsed: unknown = JSON.parse(stored);
+
+    if (!Array.isArray(parsed)) return null;
+
+    return parsed as Service[];
+  } catch (error) {
+    console.error('Unable to read saved services:', error);
+    return null;
   }
-  console.log('No services in storage, using default catalog');
-  return DEFAULT_SERVICES;
 };
 
-const saveServices = (services: Service[]) => {
-  console.log('Saving services to localStorage');
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(services));
+const saveServices = (items: Service[]) => {
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify(items)
+  );
+};
+
+// ==========================================
+// LOAD SERVICES + UPDATE IMAGE PATHS
+// ==========================================
+
+const loadServices = (): Service[] => {
+  const stored = readStoredServices();
+  const version = localStorage.getItem(
+    CATALOG_VERSION_KEY
+  );
+
+  if (version !== CATALOG_VERSION) {
+    const oldDemoIds = new Set([
+      'classic-set',
+      'gel-manicure',
+      'test-service',
+    ]);
+
+    const customServices = (stored ?? []).filter(
+      service =>
+        !oldDemoIds.has(service.id) &&
+        !DEFAULT_SERVICES.some(
+          item => item.id === service.id
+        )
+    );
+
+    // Refresh the official catalog with the correct
+    // IMG_1.png through IMG_7.png image paths.
+    // Preserve separately created custom services.
+    const migrated = [
+      ...DEFAULT_SERVICES,
+      ...customServices,
+    ];
+
+    saveServices(migrated);
+
+    localStorage.setItem(
+      CATALOG_VERSION_KEY,
+      CATALOG_VERSION
+    );
+
+    return migrated;
+  }
+
+  return stored ?? DEFAULT_SERVICES;
 };
 
 let services: Service[] = loadServices();
 
+const delay = (ms: number) =>
+  new Promise(resolve => setTimeout(resolve, ms));
+
+// ==========================================
+// PUBLIC SERVICE FUNCTIONS
+// ==========================================
+
 export const getServices = async (): Promise<Service[]> => {
-  console.log('Fetching services');
-  await new Promise(resolve => setTimeout(resolve, 300));
-  return services.filter(s => s.isActive);
+  await delay(300);
+
+  return services.filter(
+    service => service.isActive
+  );
 };
 
 export const getAllServices = async (): Promise<Service[]> => {
-  console.log('Fetching all services (admin)');
-  await new Promise(resolve => setTimeout(resolve, 300));
+  await delay(300);
   return services;
 };
 
-export const getServiceById = async (id: string): Promise<Service | undefined> => {
-  console.log('Fetching service:', id);
-  await new Promise(resolve => setTimeout(resolve, 200));
-  return services.find(s => s.id === id);
+export const getServiceById = async (
+  id: string
+): Promise<Service | undefined> => {
+  await delay(200);
+
+  return services.find(
+    service => service.id === id
+  );
 };
 
-export const createService = async (service: Omit<Service, 'id' | 'createdAt'>): Promise<Service> => {
-  console.log('Creating service:', service);
-  await new Promise(resolve => setTimeout(resolve, 300));
-  
+export const createService = async (
+  service: Omit<Service, 'id' | 'createdAt'>
+): Promise<Service> => {
+  await delay(300);
+
   const newService: Service = {
     ...service,
     id: Date.now().toString(),
-    createdAt: new Date()
+    createdAt: new Date(),
   };
-  
-  services.push(newService);
+
+  services = [...services, newService];
+
   saveServices(services);
+
   return newService;
 };
 
-export const updateService = async (id: string, updates: Partial<Service>): Promise<Service> => {
-  console.log('Updating service:', id, updates);
-  await new Promise(resolve => setTimeout(resolve, 300));
-  
-  const index = services.findIndex(s => s.id === id);
-  if (index === -1) throw new Error('Service not found');
-  
-  services[index] = { ...services[index], ...updates };
+export const updateService = async (
+  id: string,
+  updates: Partial<Service>
+): Promise<Service> => {
+  await delay(300);
+
+  const index = services.findIndex(
+    service => service.id === id
+  );
+
+  if (index === -1) {
+    throw new Error('Service not found');
+  }
+
+  services[index] = {
+    ...services[index],
+    ...updates,
+  };
+
   saveServices(services);
+
   return services[index];
 };
 
-export const deleteService = async (id: string): Promise<void> => {
-  console.log('Deleting service:', id);
-  await new Promise(resolve => setTimeout(resolve, 300));
-  services = services.filter(s => s.id !== id);
+export const deleteService = async (
+  id: string
+): Promise<void> => {
+  await delay(300);
+
+  services = services.filter(
+    service => service.id !== id
+  );
+
   saveServices(services);
 };
