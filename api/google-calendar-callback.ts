@@ -34,8 +34,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const calendarResponse = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cfg.calendarId)}`, {
       headers: { Authorization: `Bearer ${tokens.access_token}` }
     });
-    if (!calendarResponse.ok) return res.status(403).send('Authorized account cannot access the configured Google Calendar ID.');
+if (!calendarResponse.ok) {
+  const status = calendarResponse.status;
 
+  console.error('Google Calendar access check failed', {
+    status,
+    calendarConfigured: Boolean(cfg.calendarId),
+  });
+
+  return res.status(403).send(
+    `Google Calendar access check failed (Google HTTP ${status}). Check Vercel Function Logs.`
+  );
+}
     // Display token only in the setup browser. Never log, email, redirect, or include it in a URL.
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     return res.status(200).send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="robots" content="noindex,nofollow"><title>InLoveNailz Calendar Connected</title></head><body style="font:16px system-ui;max-width:700px;margin:50px auto;padding:20px"><h1>Google Calendar authorized</h1><p>Verified account: ${htmlEscape(user.email)}</p><p>Copy the refresh token below into Vercel as <strong>GOOGLE_REFRESH_TOKEN</strong>. Treat it as a password. Do not share screenshots of this page.</p><textarea readonly rows="6" style="width:100%">${htmlEscape(tokens.refresh_token)}</textarea><p>After saving the environment variable and redeploying, delete the temporary setup endpoints and the GOOGLE_OAUTH_SETUP_KEY environment variable. This page is not an admin dashboard.</p><p><strong>Note:</strong> OAuth Testing mode can cause this refresh token to expire after 7 days for Calendar access. Resolve that before production use.</p></body></html>`);
