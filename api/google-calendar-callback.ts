@@ -31,13 +31,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Verify access to the exact target calendar before presenting the token.
-    const calendarResponse = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cfg.calendarId)}`, {
-      headers: { Authorization: `Bearer ${tokens.access_token}` }
-    });
+    const calendarResponse = await fetch(
+  `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cfg.calendarId)}/events?maxResults=1`,
+  {
+    headers: {
+      Authorization: `Bearer ${tokens.access_token}`,
+    },
+  }
+);
 if (!calendarResponse.ok) {
   const status = calendarResponse.status;
 
-  console.error('Google Calendar access check failed', {
+    console.error('Google Calendar access check failed', {
     status,
     calendarConfigured: Boolean(cfg.calendarId),
   });
