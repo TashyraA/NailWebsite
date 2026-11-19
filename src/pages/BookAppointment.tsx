@@ -238,7 +238,7 @@ const BookAppointment: React.FC = () => {
       const responseText = await response.text();
 
       let result: {
-        success?: boolean;
+        url?: string;
         error?: string;
       };
 
@@ -250,7 +250,7 @@ const BookAppointment: React.FC = () => {
         );
       }
 
-      if (!response.ok || !result.success) {
+      if (!response.ok || !result.url) {
         throw new Error(
           result.error ||
             'Could not upload inspiration image.'

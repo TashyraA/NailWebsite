@@ -361,7 +361,6 @@ const Header = () => {
         id="inl-mobile-navigation"
         aria-label="Mobile navigation"
         aria-hidden={!menuOpen}
-        inert={!menuOpen}
         className={`
           absolute left-0 right-0 top-full
           overflow-hidden
