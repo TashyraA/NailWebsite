@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { CalendarCheck2, Clock3, CreditCard, ShieldCheck } from 'lucide-react';
+import { CalendarCheck2, Clock3, CreditCard, ImagePlus, ShieldCheck } from 'lucide-react';
 import { useCart } from '@/contexts/CartContext';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -15,6 +15,8 @@ const BookAppointment = () => {
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [inspirationUrl, setInspirationUrl] = useState('');
+  const [inspirationName, setInspirationName] = useState('');
   const [form, setForm] = useState({ name: '', email: '', phone: '', notes: '' });
   const selectedDate = date ? new Date(`${date}T12:00:00`) : undefined;
   const availableTimes = useMemo(() => selectedDate ? getAvailableTimes(selectedDate) : [], [selectedDate]);
@@ -22,6 +24,33 @@ const BookAppointment = () => {
   const deposit = getTotalDeposit();
   const balance = Math.max(0, total - deposit);
   const updateForm = (field: keyof typeof form, value: string) => setForm(current => ({ ...current, [field]: value }));
+
+  const handleInspirationUpload = async (file?: File) => {
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      toast({ title: 'Unsupported image', description: 'Choose a JPG, PNG, or WebP image.', variant: 'destructive' });
+      return;
+    }
+    if (file.size > 3 * 1024 * 1024) {
+      toast({ title: 'Image is too large', description: 'Choose an image smaller than 3 MB.', variant: 'destructive' });
+      return;
+    }
+    setInspirationName(file.name);
+    setInspirationUrl('');
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error('Could not read the image'));
+      reader.readAsDataURL(file);
+    });
+    const response = await fetch('/api/upload-image', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataUrl, folder: 'inlovenailz/inspiration' })
+    });
+    const result = await response.json();
+    if (!response.ok || !result.url) throw new Error(result.error || 'Could not upload inspiration image');
+    setInspirationUrl(result.url);
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -33,7 +62,7 @@ const BookAppointment = () => {
     try {
       const response = await fetch('/api/create-deposit-session', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerName: form.name, customerEmail: form.email, customerPhone: form.phone, notes: form.notes, appointmentDate: date, appointmentTime: time, services: items, totalPrice: total, depositPaid: deposit, balanceDue: balance })
+        body: JSON.stringify({ customerName: form.name, customerEmail: form.email, customerPhone: form.phone, notes: form.notes, inspirationUrl, appointmentDate: date, appointmentTime: time, services: items, totalPrice: total, depositPaid: deposit, balanceDue: balance })
       });
       const responseText = await response.text();
       let result: { url?: string; error?: string };
@@ -61,7 +90,9 @@ const BookAppointment = () => {
             <Card className="p-6"><h2 className="mb-4 text-xl font-bold text-gray-800">Your services</h2><div className="space-y-3 border-b border-[#FFC9D7] pb-4">{items.map(({ service, quantity }) => <div key={service.id} className="flex justify-between gap-4 text-gray-700"><span>{service.title} x{quantity}</span><strong>${(service.price * quantity).toFixed(2)}</strong></div>)}</div><div className="mt-4 space-y-2 text-sm"><div className="flex justify-between"><span>Total</span><strong>${total.toFixed(2)}</strong></div><div className="flex justify-between text-[#D65E7B]"><span>Deposit due now</span><strong>${deposit.toFixed(2)}</strong></div><div className="flex justify-between"><span>Remaining balance</span><strong>${balance.toFixed(2)}</strong></div></div></Card>
             <Card className="p-6"><h2 className="mb-4 flex items-center gap-2 text-xl font-bold text-gray-800"><CalendarCheck2 className="text-[#FF8CAA]" size={22} /> Choose a day and time</h2><Label htmlFor="appointment-date">Date</Label><Input id="appointment-date" type="date" value={date} min={formatDateForBooking(new Date(Date.now() + 24 * 60 * 60 * 1000))} onChange={event => { setDate(event.target.value); setTime(''); }} className="mb-5 mt-1" /><Label><Clock3 className="mr-1 inline" size={16} /> Available times</Label><div className="mt-2 grid grid-cols-2 gap-2">{availableTimes.length ? availableTimes.map(slot => <button key={slot} type="button" onClick={() => setTime(slot)} className={`rounded-lg px-3 py-2 text-sm font-semibold ${time === slot ? 'bg-[#FF8CAA] text-white' : 'bg-[#FFE9EF] text-gray-700 hover:bg-[#FFC9D7]'}`}>{formatTime(slot)}</button>) : <p className="col-span-2 text-sm text-gray-500">Choose a weekday to see available times.</p>}</div>{date && time && <p className="mt-4 rounded-lg bg-[#FFE9EF] p-3 text-sm text-gray-700">Selected: {selectedDate?.toLocaleDateString()} at {formatTime(time)}</p>}</Card>
           </div>
-          <Card className="p-6"><h2 className="mb-4 text-xl font-bold text-gray-800">Your contact details</h2><form onSubmit={handleSubmit} className="space-y-4"><div><Label htmlFor="name">Full name</Label><Input id="name" value={form.name} onChange={event => updateForm('name', event.target.value)} required /></div><div><Label htmlFor="email">Email</Label><Input id="email" type="email" value={form.email} onChange={event => updateForm('email', event.target.value)} required /></div><div><Label htmlFor="phone">Phone</Label><Input id="phone" type="tel" value={form.phone} onChange={event => updateForm('phone', event.target.value)} required /></div><div><Label htmlFor="notes">Notes</Label><Textarea id="notes" value={form.notes} onChange={event => updateForm('notes', event.target.value)} rows={4} /></div><div className="rounded-xl bg-[#FFE9EF] p-4 text-sm text-gray-700"><p className="flex items-center gap-2"><ShieldCheck className="text-green-600" size={18} /> Your $20 deposit is processed securely by Stripe.</p><p className="mt-2">Your appointment remains pending until the nail tech approves it.</p></div><Button type="submit" disabled={isSubmitting} className="w-full bg-[#FF8CAA] py-6 text-white hover:bg-[#FF6B96]"><CreditCard className="mr-2" size={18} />{isSubmitting ? 'Opening secure payment...' : `Pay $${deposit.toFixed(2)} deposit`}</Button></form></Card>
+          <Card className="p-6"><h2 className="mb-4 text-xl font-bold text-gray-800">Your contact details</h2><form onSubmit={handleSubmit} className="space-y-4"><div><Label htmlFor="name">Full name</Label><Input id="name" value={form.name} onChange={event => updateForm('name', event.target.value)} required /></div><div><Label htmlFor="email">Email</Label><Input id="email" type="email" value={form.email} onChange={event => updateForm('email', event.target.value)} required /></div><div><Label htmlFor="phone">Phone</Label><Input id="phone" type="tel" value={form.phone} onChange={event => updateForm('phone', event.target.value)} required /></div><div><Label htmlFor="notes">Notes</Label><Textarea id="notes" value={form.notes} onChange={event => updateForm('notes', event.target.value)} rows={4} /></div>
+            <div><Label htmlFor="inspiration-image"><span className="flex items-center gap-2"><ImagePlus size={16} /> Inspiration photo (optional)</span></Label><Input id="inspiration-image" type="file" accept="image/jpeg,image/png,image/webp" className="mt-1 cursor-pointer" onChange={async event => { try { await handleInspirationUpload(event.target.files?.[0]); } catch (error: any) { toast({ title: 'Upload failed', description: error.message, variant: 'destructive' }); } }} /><p className="mt-1 text-xs text-gray-500">JPG, PNG, or WebP, up to 3 MB.</p>{inspirationUrl && <div className="mt-3"><img src={inspirationUrl} alt="Inspiration preview" className="max-h-48 rounded-lg border border-[#FFC9D7] object-contain" /><p className="mt-1 truncate text-xs text-gray-600">Uploaded: {inspirationName}</p></div>}</div>
+            <div className="rounded-xl bg-[#FFE9EF] p-4 text-sm text-gray-700"><p className="flex items-center gap-2"><ShieldCheck className="text-green-600" size={18} /> Your $20 deposit is processed securely by Stripe.</p><p className="mt-2">Your appointment remains pending until the nail tech approves it.</p></div><Button type="submit" disabled={isSubmitting} className="w-full bg-[#FF8CAA] py-6 text-white hover:bg-[#FF6B96]"><CreditCard className="mr-2" size={18} />{isSubmitting ? 'Opening secure payment...' : `Pay $${deposit.toFixed(2)} deposit`}</Button></form></Card>
         </div>
       </div>
     </div>

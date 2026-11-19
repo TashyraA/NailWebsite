@@ -41,7 +41,18 @@ export default async function handler(req: any, res: any) {
       const approveUrl = `${appUrl()}/api/approve-appointment?action=approve&token=${encodeURIComponent(metadata.booking_token)}`;
       const declineUrl = `${appUrl()}/api/approve-appointment?action=decline&token=${encodeURIComponent(metadata.booking_token)}`;
       await sendEmail(booking.customerEmail, 'Your InLoveNailz booking request is pending', `<h2>Deposit received</h2><p>Hi ${escapeHtml(booking.customerName)}, your $20 deposit was received. Your appointment is pending approval.</p><p>${escapeHtml(booking.appointmentDate)} at ${escapeHtml(booking.appointmentTime)}</p><p>Services: ${escapeHtml(services)}</p>`);
-      await sendEmail(businessEmail, `Deposit paid: ${escapeHtml(booking.customerName)}`, `<h2>New booking waiting for approval</h2><p>${escapeHtml(booking.customerName)} requested ${escapeHtml(booking.appointmentDate)} at ${escapeHtml(booking.appointmentTime)}.</p><p>Services: ${escapeHtml(services)}</p><p>Total: $${booking.totalPrice.toFixed(2)} | Deposit: $${booking.depositPaid.toFixed(2)} | Balance: $${booking.balanceDue.toFixed(2)}</p><p><a href="${approveUrl}">Approve appointment</a> | <a href="${declineUrl}">Decline appointment</a></p>`);
+      let attachments: Array<{ filename: string; content: string }> | undefined;
+      if (booking.inspirationUrl) {
+        const imageResponse = await fetch(booking.inspirationUrl);
+        if (imageResponse.ok) {
+          const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+          const extension = imageResponse.headers.get('content-type')?.includes('png') ? 'png' : 'jpg';
+          attachments = [{ filename: `inspiration-${booking.id}.${extension}`, content: imageBuffer.toString('base64') }];
+        }
+      }
+      const notes = booking.notes ? `<p>Notes: ${escapeHtml(booking.notes)}</p>` : '';
+      const inspiration = booking.inspirationUrl ? `<p>Inspiration image: <a href="${escapeHtml(booking.inspirationUrl)}">View image</a></p>` : '';
+      await sendEmail(businessEmail, `Deposit paid: ${escapeHtml(booking.customerName)}`, `<h2>New booking waiting for approval</h2><p>${escapeHtml(booking.customerName)} requested ${escapeHtml(booking.appointmentDate)} at ${escapeHtml(booking.appointmentTime)}.</p><p>Services: ${escapeHtml(services)}</p>${notes}${inspiration}<p>Total: $${booking.totalPrice.toFixed(2)} | Deposit: $${booking.depositPaid.toFixed(2)} | Balance: $${booking.balanceDue.toFixed(2)}</p><p><a href="${approveUrl}">Approve appointment</a> | <a href="${declineUrl}">Decline appointment</a></p>`, attachments);
     }
 
     if (metadata.payment_type === 'balance') {

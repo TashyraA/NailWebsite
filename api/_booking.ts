@@ -13,6 +13,7 @@ export type Booking = {
   depositPaid: number;
   balanceDue: number;
   notes?: string;
+  inspirationUrl?: string;
 };
 
 const secret = () => process.env.BOOKING_LINK_SECRET || process.env.STRIPE_SECRET_KEY || '';
@@ -30,6 +31,7 @@ export const signBooking = (booking: Booking) => {
     x: booking.depositPaid,
     b: booking.balanceDue,
     o: booking.notes,
+    u: booking.inspirationUrl,
     z: Date.now() + 90 * 24 * 60 * 60 * 1000
   };
   const payload = deflateRawSync(Buffer.from(JSON.stringify(compact))).toString('base64url');
@@ -57,7 +59,8 @@ export const verifyBooking = (token: string): Booking => {
     totalPrice: compact.a,
     depositPaid: compact.x,
     balanceDue: compact.b,
-    notes: compact.o
+    notes: compact.o,
+    inspirationUrl: compact.u
   };
 };
 
@@ -72,7 +75,8 @@ export const normalizeBooking = (body: any): Booking => ({
   totalPrice: Number(body.totalPrice),
   depositPaid: Number(body.depositPaid),
   balanceDue: Number(body.balanceDue),
-  notes: body.notes ? String(body.notes) : undefined
+  notes: body.notes ? String(body.notes) : undefined,
+  inspirationUrl: body.inspirationUrl ? String(body.inspirationUrl) : undefined
 });
 
 export const appUrl = () => process.env.APP_URL || `https://${process.env.VERCEL_URL || 'localhost:5173'}`;
