@@ -12,6 +12,7 @@
     "noUnusedParameters": false
   },
   "include": [
+    "api/request-appointment.ts",
     "api/stripe-webhook.ts",
     "api/_booking.ts",
     "api/_email.ts"
