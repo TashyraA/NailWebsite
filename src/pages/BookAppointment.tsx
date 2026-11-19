@@ -33,7 +33,7 @@ const BookAppointment = () => {
     try {
       const response = await fetch('/api/create-deposit-session', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, appointmentDate: date, appointmentTime: time, services: items, totalPrice: total, depositPaid: deposit, balanceDue: balance })
+        body: JSON.stringify({ customerName: form.name, customerEmail: form.email, customerPhone: form.phone, notes: form.notes, appointmentDate: date, appointmentTime: time, services: items, totalPrice: total, depositPaid: deposit, balanceDue: balance })
       });
       const responseText = await response.text();
       let result: { url?: string; error?: string };

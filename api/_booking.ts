@@ -36,9 +36,9 @@ export const verifyBooking = (token: string): Booking => {
 
 export const normalizeBooking = (body: any): Booking => ({
   id: randomUUID(),
-  customerName: String(body.customerName || '').trim(),
-  customerEmail: String(body.customerEmail || '').trim(),
-  customerPhone: String(body.customerPhone || '').trim(),
+  customerName: String(body.customerName || body.name || '').trim(),
+  customerEmail: String(body.customerEmail || body.email || '').trim(),
+  customerPhone: String(body.customerPhone || body.phone || '').trim(),
   appointmentDate: String(body.appointmentDate || ''),
   appointmentTime: String(body.appointmentTime || ''),
   services: Array.isArray(body.services) ? body.services : [],
