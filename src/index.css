@@ -101,6 +101,14 @@
     font-optical-sizing: auto;
   }
 
+  #root {
+    max-width: 1280px;
+    min-height: 100vh;
+    margin-inline: auto;
+    overflow-x: hidden;
+    background: #FFF7F8;
+  }
+
   h1, h2, h3, h4, h5, h6 {
     font-family: "Cormorant Garamond", serif;
     font-optical-sizing: auto;
