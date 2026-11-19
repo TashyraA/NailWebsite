@@ -1,13 +1,6 @@
-
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import {
-  ShoppingBag,
-  Instagram,
-  Menu,
-  X,
-  ArrowUpRight,
-} from 'lucide-react';
+import { ShoppingBag, Instagram, Menu, X, ArrowUpRight } from 'lucide-react';
 
 import { useCart } from '@/contexts/CartContext';
 import { Badge } from '@/components/ui/badge';
@@ -25,12 +18,10 @@ const navItems = [
 
 const Header = () => {
   const location = useLocation();
-
   const { getItemCount } = useCart();
   const itemCount = getItemCount();
 
   const [menuOpen, setMenuOpen] = useState(false);
-
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const mobileNavRef = useRef<HTMLElement>(null);
 
@@ -72,10 +63,7 @@ const Header = () => {
     };
 
     window.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [menuOpen]);
 
   /* =========================================
@@ -84,15 +72,11 @@ const Header = () => {
 
   useEffect(() => {
     if (menuOpen) {
-      mobileNavRef.current
-        ?.querySelector<HTMLAnchorElement>('a')
-        ?.focus();
+      mobileNavRef.current?.querySelector<HTMLAnchorElement>('a')?.focus();
     }
   }, [menuOpen]);
 
-  const closeMenu = () => {
-    setMenuOpen(false);
-  };
+  const closeMenu = () => setMenuOpen(false);
 
   return (
     <header
@@ -107,7 +91,6 @@ const Header = () => {
       {/* =====================================
           MAIN HEADER CONTAINER
       ===================================== */}
-
       <div
         className="
           mx-auto flex h-[78px] w-full
@@ -117,10 +100,7 @@ const Header = () => {
           sm:px-6 lg:px-8
         "
       >
-        {/* =====================================
-            LOGO
-        ===================================== */}
-
+        {/* LOGO */}
         <Link
           to="/"
           className="
@@ -144,10 +124,7 @@ const Header = () => {
           />
         </Link>
 
-        {/* =====================================
-            DESKTOP NAVIGATION
-        ===================================== */}
-
+        {/* DESKTOP NAVIGATION */}
         <nav
           className="
             hidden items-center
@@ -170,7 +147,6 @@ const Header = () => {
                   py-2 text-[13px]
                   font-medium tracking-[0.02em]
                   transition-colors duration-200
-
                   ${
                     active
                       ? 'text-[#963F60]'
@@ -179,20 +155,13 @@ const Header = () => {
                 `}
               >
                 {label}
-
-                {/* Elegant underline */}
-
                 <span
+                  aria-hidden="true"
                   className={`
                     absolute bottom-[3px] left-0
                     h-[1.5px] bg-[#963F60]
                     transition-all duration-300
-
-                    ${
-                      active
-                        ? 'w-full'
-                        : 'w-0 group-hover:w-full'
-                    }
+                    ${active ? 'w-full' : 'w-0 group-hover:w-full'}
                   `}
                 />
               </Link>
@@ -200,10 +169,7 @@ const Header = () => {
           })}
         </nav>
 
-        {/* =====================================
-            RIGHT HEADER ACTIONS
-        ===================================== */}
-
+        {/* RIGHT HEADER ACTIONS */}
         <div
           className="
             relative z-10 flex shrink-0
@@ -212,7 +178,6 @@ const Header = () => {
           "
         >
           {/* INSTAGRAM */}
-
           <a
             href="https://www.instagram.com/briilovesnailz"
             target="_blank"
@@ -228,17 +193,10 @@ const Header = () => {
               sm:inline-flex
             "
           >
-            <Instagram
-              size={19}
-              strokeWidth={1.7}
-              aria-hidden="true"
-            />
+            <Instagram size={19} strokeWidth={1.7} aria-hidden="true" />
           </a>
 
-          {/* =====================================
-              BOOK NOW BUTTON
-          ===================================== */}
-
+          {/* BOOK NOW BUTTON */}
           <Link
             to="/book"
             className="
@@ -256,18 +214,10 @@ const Header = () => {
             "
           >
             Book Now
-
-            <ArrowUpRight
-              size={15}
-              strokeWidth={1.8}
-              aria-hidden="true"
-            />
+            <ArrowUpRight size={15} strokeWidth={1.8} aria-hidden="true" />
           </Link>
 
-          {/* =====================================
-              SHOPPING BAG
-          ===================================== */}
-
+          {/* SHOPPING BAG */}
           <Link
             to="/cart"
             className="
@@ -282,14 +232,7 @@ const Header = () => {
             aria-label={`View booking bag, ${itemCount} selected services`}
             onClick={closeMenu}
           >
-            <ShoppingBag
-              size={22}
-              strokeWidth={1.7}
-              aria-hidden="true"
-            />
-
-            {/* CART COUNT BADGE */}
-
+            <ShoppingBag size={22} strokeWidth={1.7} aria-hidden="true" />
             {itemCount > 0 && (
               <Badge
                 className="
@@ -308,23 +251,14 @@ const Header = () => {
             )}
           </Link>
 
-          {/* =====================================
-              MOBILE MENU BUTTON
-          ===================================== */}
-
+          {/* MOBILE MENU BUTTON */}
           <button
             ref={menuButtonRef}
             type="button"
-            aria-label={
-              menuOpen
-                ? 'Close navigation menu'
-                : 'Open navigation menu'
-            }
+            aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}
             aria-expanded={menuOpen}
             aria-controls="inl-mobile-navigation"
-            onClick={() => {
-              setMenuOpen((previous) => !previous);
-            }}
+            onClick={() => setMenuOpen(previous => !previous)}
             className="
               inline-flex h-10 w-10
               items-center justify-center
@@ -336,17 +270,9 @@ const Header = () => {
             "
           >
             {menuOpen ? (
-              <X
-                size={23}
-                strokeWidth={1.7}
-                aria-hidden="true"
-              />
+              <X size={23} strokeWidth={1.7} aria-hidden="true" />
             ) : (
-              <Menu
-                size={23}
-                strokeWidth={1.7}
-                aria-hidden="true"
-              />
+              <Menu size={23} strokeWidth={1.7} aria-hidden="true" />
             )}
           </button>
         </div>
@@ -354,8 +280,9 @@ const Header = () => {
 
       {/* =====================================
           MOBILE NAVIGATION
+          Hidden is applied when closed so its
+          links cannot be reached using Tab.
       ===================================== */}
-
       <nav
         ref={mobileNavRef}
         id="inl-mobile-navigation"
@@ -369,7 +296,6 @@ const Header = () => {
           shadow-[0_16px_25px_rgba(41,37,43,0.07)]
           transition-all duration-300
           lg:hidden
-
           ${
             menuOpen
               ? 'visible max-h-[85vh] opacity-100'
@@ -387,7 +313,6 @@ const Header = () => {
           "
         >
           {/* MOBILE NAV LINKS */}
-
           {navItems.map(({ label, path }) => {
             const active = isActive(path, label);
 
@@ -396,13 +321,13 @@ const Header = () => {
                 key={label}
                 to={path}
                 onClick={closeMenu}
+                tabIndex={menuOpen ? 0 : -1}
                 aria-current={active ? 'page' : undefined}
                 className={`
                   border-b border-[#F7DDE4]/70
                   py-3 text-[14px]
                   font-medium
                   transition-colors duration-200
-
                   ${
                     active
                       ? 'text-[#963F60]'
@@ -415,13 +340,11 @@ const Header = () => {
             );
           })}
 
-          {/* =====================================
-              MOBILE BOOK NOW
-          ===================================== */}
-
+          {/* MOBILE BOOK NOW */}
           <Link
             to="/book"
             onClick={closeMenu}
+            tabIndex={menuOpen ? 0 : -1}
             className="
               mt-5 flex min-h-[46px]
               items-center justify-center
@@ -434,22 +357,16 @@ const Header = () => {
             "
           >
             Book Your Appointment
-
-            <ArrowUpRight
-              size={17}
-              aria-hidden="true"
-            />
+            <ArrowUpRight size={17} aria-hidden="true" />
           </Link>
 
-          {/* =====================================
-              MOBILE INSTAGRAM
-          ===================================== */}
-
+          {/* MOBILE INSTAGRAM */}
           <a
             href="https://www.instagram.com/briilovesnailz"
             target="_blank"
             rel="noopener noreferrer"
             onClick={closeMenu}
+            tabIndex={menuOpen ? 0 : -1}
             className="
               mt-3 flex items-center
               justify-center gap-2
@@ -457,11 +374,7 @@ const Header = () => {
               font-medium text-[#963F60]
             "
           >
-            <Instagram
-              size={17}
-              aria-hidden="true"
-            />
-
+            <Instagram size={17} aria-hidden="true" />
             Follow on Instagram
           </a>
         </div>

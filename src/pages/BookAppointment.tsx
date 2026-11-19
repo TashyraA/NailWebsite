@@ -820,7 +820,7 @@ const BookAppointment: React.FC = () => {
                         text-[#963F60]
                       "
                     >
-                      Deposit Due Today
+                      Deposit Payment Link
                     </span>
 
                     <span
