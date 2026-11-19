@@ -12,8 +12,10 @@
     "noUnusedParameters": false
   },
   "include": [
+    "api/approve-appointment.ts",
     "api/request-appointment.ts",
     "api/stripe-webhook.ts",
+    "api/_balance-payment.ts",
     "api/_booking.ts",
     "api/_email.ts"
   ]
