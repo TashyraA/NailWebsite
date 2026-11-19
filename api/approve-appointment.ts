@@ -1,6 +1,6 @@
-import { appUrl, verifyBooking } from './_booking';
-import { createBalancePaymentLink } from './_balance-payment';
-import { escapeHtml, sendEmail } from './_email';
+import { appUrl, verifyBooking } from './_booking.js';
+import { createBalancePaymentLink } from './_balance-payment.js';
+import { escapeHtml, sendEmail } from './_email.js';
 
 export default async function handler(req: any, res: any) {
   const token = String(req.query?.token || '');

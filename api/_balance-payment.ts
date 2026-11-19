@@ -1,4 +1,4 @@
-import { appUrl } from './_booking';
+import { appUrl } from './_booking.js';
 
 export type ConfirmedBooking = {
   id: string;

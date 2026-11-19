@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from 'crypto';
-import { appUrl, verifyBooking } from './_booking';
-import { createBalancePaymentLink } from './_balance-payment';
-import { escapeHtml, sendEmail } from './_email';
+import { appUrl, verifyBooking } from './_booking.js';
+import { createBalancePaymentLink } from './_balance-payment.js';
+import { escapeHtml, sendEmail } from './_email.js';
 
 export const config = { api: { bodyParser: false } };
 
