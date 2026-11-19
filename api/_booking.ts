@@ -1,4 +1,5 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
+import { deflateRawSync, inflateRawSync } from 'zlib';
 
 export type Booking = {
   id: string;
@@ -17,7 +18,21 @@ export type Booking = {
 const secret = () => process.env.BOOKING_LINK_SECRET || process.env.STRIPE_SECRET_KEY || '';
 
 export const signBooking = (booking: Booking) => {
-  const payload = Buffer.from(JSON.stringify({ booking, expiresAt: Date.now() + 90 * 24 * 60 * 60 * 1000 })).toString('base64url');
+  const compact = {
+    i: booking.id,
+    n: booking.customerName,
+    e: booking.customerEmail,
+    p: booking.customerPhone,
+    d: booking.appointmentDate,
+    t: booking.appointmentTime,
+    s: booking.services.map(item => [item.service?.title || item.title || 'Nail service', item.quantity || 1]),
+    a: booking.totalPrice,
+    x: booking.depositPaid,
+    b: booking.balanceDue,
+    o: booking.notes,
+    z: Date.now() + 90 * 24 * 60 * 60 * 1000
+  };
+  const payload = deflateRawSync(Buffer.from(JSON.stringify(compact))).toString('base64url');
   const signature = createHmac('sha256', secret()).update(payload).digest('base64url');
   return `${payload}.${signature}`;
 };
@@ -29,9 +44,21 @@ export const verifyBooking = (token: string): Booking => {
   if (signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
     throw new Error('Invalid booking link');
   }
-  const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString()) as { booking: Booking; expiresAt: number };
-  if (decoded.expiresAt < Date.now()) throw new Error('This booking link has expired');
-  return decoded.booking;
+  const compact = JSON.parse(inflateRawSync(Buffer.from(payload, 'base64url')).toString()) as any;
+  if (compact.z < Date.now()) throw new Error('This booking link has expired');
+  return {
+    id: compact.i,
+    customerName: compact.n,
+    customerEmail: compact.e,
+    customerPhone: compact.p,
+    appointmentDate: compact.d,
+    appointmentTime: compact.t,
+    services: (compact.s || []).map((item: any[]) => ({ title: item[0], quantity: item[1] })),
+    totalPrice: compact.a,
+    depositPaid: compact.x,
+    balanceDue: compact.b,
+    notes: compact.o
+  };
 };
 
 export const normalizeBooking = (body: any): Booking => ({
