@@ -39,6 +39,7 @@ const Header = () => {
           <a href="https://www.instagram.com/briilovesnailz" target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="hidden rounded-md p-2 text-[#963F60] hover:bg-[#F7DDE4] sm:block">
             <Instagram size={20} />
           </a>
+          <Link to="/book" className="hidden rounded-md bg-[#963F60] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#29252B] md:inline-flex">Book Now</Link>
           <Link to="/cart" className="relative rounded-md p-2 text-[#963F60] hover:bg-[#F7DDE4]" aria-label="Shopping cart">
             <ShoppingCart size={21} />
             {itemCount > 0 && <Badge className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center border-0 bg-[#963F60] px-1 text-[10px] text-white">{itemCount}</Badge>}

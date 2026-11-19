@@ -23,22 +23,25 @@ const Home = () => {
 
   return (
     <div className="min-h-screen">
-      <section className="relative min-h-[390px] overflow-hidden bg-[#29252B] text-white md:min-h-[410px]">
-        <div className="absolute inset-0 bg-[url('/hero-background.jpg')] bg-cover bg-[center_right] md:bg-center"></div>
-        <div className="absolute inset-0 bg-gradient-to-r from-[#29252B] via-[#29252B]/90 to-[#963F60]/10"></div>
-        <div className="relative mx-auto flex min-h-[390px] max-w-[1180px] items-center px-6 py-12 md:min-h-[410px] md:px-8">
+      <section className="relative min-h-[390px] overflow-hidden bg-[#29252B] text-white md:min-h-[520px]">
+        <div className="absolute inset-0 bg-[url('/hero-background.jpg')] bg-cover bg-[72%_center] md:bg-center"></div>
+        <div className="absolute inset-0 bg-gradient-to-r from-[#29252B] via-[#29252B]/75 to-[#963F60]/5"></div>
+        <div className="relative mx-auto flex min-h-[390px] max-w-[1180px] items-center px-6 py-12 md:min-h-[520px] md:px-8">
           <div className="max-w-[470px]">
-            <p className="mb-5 text-[10px] font-semibold uppercase tracking-[0.28em] text-[#EFA1B7]">Cleveland, Ohio · Licensed Manicurist</p>
-            <h1 className="font-serif text-5xl leading-[0.95] tracking-tight md:text-[58px]">Custom Nails.<br /><span className="text-[#F7DDE4]">Signature Artistry.</span></h1>
+            <p className="mb-5 flex items-center text-[10px] font-semibold uppercase tracking-[0.28em] text-[#EFA1B7]">
+              <span>Cleveland, Ohio · Licensed Manicurist</span>
+              <span className="ml-4 h-px w-10 bg-[#EFA1B7]/80"></span>
+            </p>
+            <h1 className="font-serif text-5xl leading-[0.95] tracking-tight md:text-[62px]">Custom Nails.<br /><span className="italic text-[#F7DDE4]">Signature Artistry.</span></h1>
             <p className="mt-5 max-w-md text-sm leading-relaxed text-[#FFF7F8]/90">Elevated nail sets, detailed designs, and a personalized experience that bring your vision to life.</p>
             <div className="mt-7 flex flex-wrap gap-3">
               <Link to="/book" className="rounded-md bg-[#963F60] px-5 py-3 text-xs font-semibold text-white transition hover:bg-[#EFA1B7] hover:text-[#29252B]">Book an Appointment <ArrowRight className="ml-2 inline" size={14} /></Link>
               <Link to="/services" className="rounded-md border border-[#FFF7F8]/60 px-5 py-3 text-xs font-semibold text-white transition hover:border-[#EFA1B7] hover:text-[#EFA1B7]">View Services</Link>
             </div>
-            <div className="mt-8 flex gap-6 text-[11px] text-[#FFF7F8]/85">
-              <span className="flex items-center gap-2"><Gem size={16} /> Custom Design</span>
-              <span className="flex items-center gap-2"><Diamond size={16} /> Quality Care</span>
-              <span className="hidden items-center gap-2 sm:flex"><CalendarDays size={16} /> Easy Booking</span>
+            <div className="mt-8 flex items-center text-[11px] text-[#FFF7F8]/85">
+              <span className="flex items-center gap-2 pr-5"><Gem size={16} /> Custom Design</span>
+              <span className="flex items-center gap-5 border-l border-[#FFF7F8]/40 pl-5"><span className="flex items-center gap-2"><Diamond size={16} /> Quality Care</span></span>
+              <span className="hidden items-center gap-5 border-l border-[#FFF7F8]/40 pl-5 sm:flex"><span className="flex items-center gap-2"><CalendarDays size={16} /> Easy Booking</span></span>
             </div>
           </div>
         </div>
