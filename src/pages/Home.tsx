@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Star, Clock, Award } from 'lucide-react';
+import { ArrowRight, CalendarDays, Diamond, Gem, Layers3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ServiceCarousel from '@/components/ServiceCarousel';
 
@@ -23,64 +23,46 @@ const Home = () => {
 
   return (
     <div className="min-h-screen">
-      {/* Hero Section */}
-      <section className="relative bg-gradient-to-br from-[#FFE9EF] via-[#FFC9D7] to-[#FFBCCD] py-12 sm:py-16 md:py-20 overflow-hidden">
-        <div className="absolute inset-0 bg-[url('/hero-background.jpg')] bg-cover bg-center opacity-35"></div>
-        
-        <div className="container mx-auto px-4 relative">
-          <div className="max-w-3xl mx-auto text-center">
-            <div className="flex items-center justify-center gap-2 sm:gap-4 mb-6 sm:mb-8 overflow-hidden">
-              <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-semibold animate-slide-in-right" style={{ fontFamily: '"Cormorant Garamond", serif' }}>
-                Welcome
-              </h1>
-              <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-semibold animate-slide-in-left" style={{ fontFamily: '"Cormorant Garamond", serif' }}>
-                Beautiful
-              </h1>
+      <section className="relative min-h-[390px] overflow-hidden bg-[#29252B] text-white md:min-h-[410px]">
+        <div className="absolute inset-0 bg-[url('/hero-background.jpg')] bg-cover bg-[center_right] md:bg-center"></div>
+        <div className="absolute inset-0 bg-gradient-to-r from-[#29252B] via-[#29252B]/90 to-[#963F60]/10"></div>
+        <div className="relative mx-auto flex min-h-[390px] max-w-[1180px] items-center px-6 py-12 md:min-h-[410px] md:px-8">
+          <div className="max-w-[470px]">
+            <p className="mb-5 text-[10px] font-semibold uppercase tracking-[0.28em] text-[#EFA1B7]">Cleveland, Ohio · Licensed Manicurist</p>
+            <h1 className="font-serif text-5xl leading-[0.95] tracking-tight md:text-[58px]">Custom Nails.<br /><span className="text-[#F7DDE4]">Signature Artistry.</span></h1>
+            <p className="mt-5 max-w-md text-sm leading-relaxed text-[#FFF7F8]/90">Elevated nail sets, detailed designs, and a personalized experience that bring your vision to life.</p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <Link to="/book" className="rounded-md bg-[#963F60] px-5 py-3 text-xs font-semibold text-white transition hover:bg-[#EFA1B7] hover:text-[#29252B]">Book an Appointment <ArrowRight className="ml-2 inline" size={14} /></Link>
+              <Link to="/services" className="rounded-md border border-[#FFF7F8]/60 px-5 py-3 text-xs font-semibold text-white transition hover:border-[#EFA1B7] hover:text-[#EFA1B7]">View Services</Link>
             </div>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link to="/services" className="w-full sm:w-auto">
-                <Button className="w-full sm:w-auto bg-[#FF8CAA] hover:bg-[#FF6B96] text-white font-semibold shadow-lg hover:shadow-xl transition-all px-6 py-2">
-                  Browse Services
-                  <ArrowRight className="ml-2" size={16} />
-                </Button>
-              </Link>
-            </div>
-          </div>
-
-          {/* Features */}
-          <div className="grid grid-cols-3 gap-3 sm:gap-4 md:gap-6 mt-12 sm:mt-16 max-w-4xl mx-auto">
-            <div className="bg-[#FFE9EF] rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 shadow-lg hover:shadow-xl transition-shadow border border-gray-800">
-              <div className="bg-[#FF8CAA] w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-lg sm:rounded-xl flex items-center justify-center mb-2 sm:mb-3 md:mb-4">
-                <Star className="text-white" size={16} />
-              </div>
-              <h3 className="text-xs sm:text-sm md:text-lg font-semibold mb-1 sm:mb-2 text-gray-800">Premium Quality</h3>
-              <p className="text-gray-700 text-xs sm:text-xs md:text-sm">Top-tier products and expert techniques</p>
-            </div>
-
-            <div className="bg-[#FFE9EF] rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 shadow-lg hover:shadow-xl transition-shadow border border-gray-800">
-              <div className="bg-[#FF8CAA] w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-lg sm:rounded-xl flex items-center justify-center mb-2 sm:mb-3 md:mb-4">
-                <Clock className="text-white" size={16} />
-              </div>
-              <h3 className="text-xs sm:text-sm md:text-lg font-semibold mb-1 sm:mb-2 text-gray-800">Flexible Booking</h3>
-              <p className="text-gray-700 text-xs sm:text-xs md:text-sm">Easy online scheduling at your convenience</p>
-            </div>
-
-            <div className="bg-[#FFE9EF] rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 shadow-lg hover:shadow-xl transition-shadow border border-gray-800">
-              <div className="bg-[#FF8CAA] w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-lg sm:rounded-xl flex items-center justify-center mb-2 sm:mb-3 md:mb-4">
-                <Award className="text-white" size={16} />
-              </div>
-              <h3 className="text-xs sm:text-sm md:text-lg font-semibold mb-1 sm:mb-2 text-gray-800">Certified Artists</h3>
-              <p className="text-gray-700 text-xs sm:text-xs md:text-sm">Trained professionals dedicated to excellence</p>
+            <div className="mt-8 flex gap-6 text-[11px] text-[#FFF7F8]/85">
+              <span className="flex items-center gap-2"><Gem size={16} /> Custom Design</span>
+              <span className="flex items-center gap-2"><Diamond size={16} /> Quality Care</span>
+              <span className="hidden items-center gap-2 sm:flex"><CalendarDays size={16} /> Easy Booking</span>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Separator Line */}
-      <div className="border-t border-gray-800" style={{ borderWidth: '1px' }}></div>
+      <section className="bg-[#FFF7F8] px-4 py-12 text-[#29252B]">
+        <div className="mx-auto max-w-[1100px] text-center">
+          <p className="text-[10px] font-bold uppercase tracking-[0.32em] text-[#963F60]">Featured Nail Art</p>
+          <h2 className="mt-1 font-serif text-4xl md:text-[42px]">The Nail Edit</h2>
+          <p className="mt-1 text-sm text-[#963F60]">A look at some of our most loved sets.</p>
+          {carouselImages.length > 0 && <div className="mt-7"><ServiceCarousel images={carouselImages.slice(0, 5)} /></div>}
+          <div className="mx-auto mt-8 grid max-w-[760px] divide-y divide-[#F7DDE4] border-y border-[#F7DDE4] md:grid-cols-3 md:divide-x md:divide-y-0">
+            <div className="px-4 py-5"><Layers3 className="mx-auto mb-2 text-[#963F60]" size={20} /><h3 className="font-serif text-lg">Full Sets</h3><p className="mt-1 text-[10px] text-[#963F60]">Acrylic, gel, and custom sets</p></div>
+            <div className="px-4 py-5"><Diamond className="mx-auto mb-2 text-[#963F60]" size={20} /><h3 className="font-serif text-lg">Manicures</h3><p className="mt-1 text-[10px] text-[#963F60]">Clean, polished, and long-lasting</p></div>
+            <div className="px-4 py-5"><Gem className="mx-auto mb-2 text-[#963F60]" size={20} /><h3 className="font-serif text-lg">Nail Art Add-On</h3><p className="mt-1 text-[10px] text-[#963F60]">Rhinestones, charms, and hand-painted designs</p></div>
+          </div>
+        </div>
+      </section>
 
-      {/* Service Carousel */}
-      {carouselImages.length > 0 && <ServiceCarousel images={carouselImages} />}
+      <section className="bg-[#963F60] px-4 py-8 text-center text-white">
+        <p className="font-serif text-3xl italic">Ready for Your Next Set?</p>
+        <p className="mt-2 text-xs text-[#FFF7F8]/90">Book your appointment today and let&apos;s create something beautiful.</p>
+        <Link to="/book" className="mt-4 inline-block rounded-md bg-[#FFF7F8] px-5 py-2.5 text-xs font-semibold text-[#963F60]">Book Now <ArrowRight className="ml-1 inline" size={13} /></Link>
+      </section>
 
       {/* Mission Section */}
       <section className="bg-gradient-to-r from-[#FFBCCD] to-[#FFC9D7] py-8">

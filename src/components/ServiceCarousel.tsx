@@ -6,7 +6,7 @@ interface ServiceCarouselProps {
 
 const ServiceCarousel: React.FC<ServiceCarouselProps> = ({ images }) => {
   return (
-    <div className="w-full overflow-hidden bg-gradient-to-r from-[#FFBCCD] to-[#FFC9D7] py-8">
+    <div className="w-full overflow-hidden bg-[#FFF7F8] py-2">
       <div className="carousel-container">
         <div className="carousel-track">
           {/* First set of images */}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ShoppingCart, Instagram } from 'lucide-react';
+import { ShoppingCart, Instagram, Menu } from 'lucide-react';
 import { useCart } from '@/contexts/CartContext';
 import { Badge } from '@/components/ui/badge';
 
@@ -11,134 +11,42 @@ const Header = () => {
 
   const isActive = (path: string) => location.pathname === path;
 
+  const navItems = [
+    ['Home', '/'],
+    ['Services', '/services'],
+    ['Gallery', '/'],
+    ['About', '/'],
+    ['Policies', '/'],
+    ['Contact', '/contact'],
+  ] as const;
+
   return (
-    <>
-    <header className="sticky top-0 z-50 bg-[#FFE9EF]/90 backdrop-blur-md border-b border-[#FFC9D7] shadow-sm">
-      <div className="container mx-auto px-4 py-3">
-        {/* Mobile Header - Centered Logo */}
-        <div className="md:hidden flex items-center justify-between relative">
-          <div className="absolute inset-0 flex justify-center items-center">
-            <Link to="/" className="flex items-center gap-2 group">
-              <img 
-                src="/logo.png" 
-                alt="InLoveNailz Logo" 
-                className="h-28 w-auto object-contain group-hover:scale-105 transition-transform"
-              />
-            </Link>
-          </div>
-          <div className="relative z-10 ml-auto">
-            <Link to="/cart" className="relative">
-              <div className="p-2 rounded-lg hover:bg-[#FFC9D7] transition-colors">
-                <ShoppingCart className="text-[#FF8CAA]" size={22} />
-                {itemCount > 0 && (
-                  <Badge className="absolute -top-1 -right-1 bg-[#FFBCCD] text-white border-0 min-w-[20px] h-5 flex items-center justify-center text-xs font-semibold">
-                    {itemCount}
-                  </Badge>
-                )}
-              </div>
-            </Link>
-          </div>
-        </div>
+    <header className="sticky top-0 z-50 h-[72px] border-b border-[#F7DDE4] bg-[#FFF7F8] shadow-sm">
+      <div className="mx-auto flex h-full max-w-[1180px] items-center justify-between px-4 md:px-6">
+        <Link to="/" className="shrink-0" aria-label="InLoveNailz home">
+          <img src="/logo.png" alt="InLoveNailz by Briana" className="h-[62px] w-auto object-contain" />
+        </Link>
 
-        {/* Desktop Header - Original Layout */}
-        <div className="hidden md:flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2 group">
-            <img 
-              src="/logo.png" 
-              alt="InLoveNailz Logo" 
-              className="h-24 w-auto object-contain group-hover:scale-105 transition-transform"
-            />
-          </Link>
-
-          <nav className="flex items-center gap-10">
-            <Link
-              to="/"
-              className={`font-medium transition-all text-lg text-gray-700 hover:text-gray-900 pb-1 px-3 ${
-                isActive('/') ? 'border-b-2 border-gray-800' : 'border-b-2 border-transparent hover:border-gray-800'
-              }`}
-            >
-              Home
+        <nav className="hidden items-center gap-7 lg:flex">
+          {navItems.map(([label, path]) => (
+            <Link key={label} to={path} className={`border-b pb-1 text-[13px] transition-colors ${isActive(path) ? 'border-[#963F60] text-[#963F60]' : 'border-transparent text-[#29252B] hover:border-[#963F60] hover:text-[#963F60]'}`}>
+              {label}
             </Link>
-            <Link
-              to="/services"
-              className={`font-medium transition-all text-lg text-gray-700 hover:text-gray-900 pb-1 px-3 ${
-                isActive('/services') ? 'border-b-2 border-gray-800' : 'border-b-2 border-transparent hover:border-gray-800'
-              }`}
-            >
-              Services
-            </Link>
-            <Link
-              to="/contact"
-              className={`font-medium transition-all text-lg text-gray-700 hover:text-gray-900 pb-1 px-3 ${
-                isActive('/contact') ? 'border-b-2 border-gray-800' : 'border-b-2 border-transparent hover:border-gray-800'
-              }`}
-            >
-              Contact
-            </Link>
-            <a
-              href="https://www.instagram.com/briilovesnailz"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium text-gray-700 hover:text-gray-900 transition-all flex items-center gap-2 text-lg pb-1 px-3 border-b-2 border-transparent hover:border-gray-800"
-            >
-              <Instagram size={20} />
-              Follow Me
-            </a>
-          </nav>
-
-          <Link to="/cart" className="relative">
-            <div className="p-2 rounded-lg hover:bg-[#FFC9D7] transition-colors">
-              <ShoppingCart className="text-[#FF8CAA]" size={22} />
-              {itemCount > 0 && (
-                <Badge className="absolute -top-1 -right-1 bg-[#FFBCCD] text-white border-0 min-w-[20px] h-5 flex items-center justify-center text-xs font-semibold">
-                  {itemCount}
-                </Badge>
-              )}
-            </div>
-          </Link>
-        </div>
-
-        {/* Mobile Navigation */}
-        <nav className="md:hidden flex justify-around mt-4 pt-4 border-t border-[#FFC9D7]">
-          <Link
-            to="/"
-            className={`text-sm font-medium text-gray-700 pb-1 ${
-              isActive('/') ? 'border-b-2 border-gray-800' : 'border-b-2 border-transparent'
-            }`}
-          >
-            Home
-          </Link>
-          <Link
-            to="/services"
-            className={`text-sm font-medium text-gray-700 pb-1 ${
-              isActive('/services') ? 'border-b-2 border-gray-800' : 'border-b-2 border-transparent'
-            }`}
-          >
-            Services
-          </Link>
-          <Link
-            to="/contact"
-            className={`text-sm font-medium text-gray-700 pb-1 ${
-              isActive('/contact') ? 'border-b-2 border-gray-800' : 'border-b-2 border-transparent'
-            }`}
-          >
-            Contact
-          </Link>
-          <a
-            href="https://www.instagram.com/briilovesnailz"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm font-medium text-gray-700 flex items-center gap-1 pb-1 border-b-2 border-transparent"
-          >
-            <Instagram size={14} />
-            Follow
-          </a>
+          ))}
         </nav>
+
+        <div className="flex items-center gap-2 md:gap-4">
+          <a href="https://www.instagram.com/briilovesnailz" target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="hidden rounded-md p-2 text-[#963F60] hover:bg-[#F7DDE4] sm:block">
+            <Instagram size={20} />
+          </a>
+          <Link to="/cart" className="relative rounded-md p-2 text-[#963F60] hover:bg-[#F7DDE4]" aria-label="Shopping cart">
+            <ShoppingCart size={21} />
+            {itemCount > 0 && <Badge className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center border-0 bg-[#963F60] px-1 text-[10px] text-white">{itemCount}</Badge>}
+          </Link>
+          <button type="button" className="rounded-md p-2 text-[#29252B] lg:hidden" aria-label="Open navigation"><Menu size={22} /></button>
+        </div>
       </div>
     </header>
-    {/* Thick Black Border Line */}
-    <div className="sticky top-[88px] z-40 border-t-4 border-gray-800 w-full"></div>
-    </>
   );
 };
 
