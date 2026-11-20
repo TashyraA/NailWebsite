@@ -7,27 +7,75 @@ import { escapeHtml, sendEmail } from './_email.js';
 
 /* =========================================
    INLOVENAILZ BY BRIANA
-   APPOINTMENT REQUEST API
+   SECURE APPOINTMENT REQUEST API
 
-   - Save appointment requests to Neon
-   - Generate private review links for Briana
-   - Store only hashed review tokens
-   - No automatic deposit payments
-   - No Stripe Checkout at request time
-   - Email Briana appointment details
-   - Email customer acknowledgment
-   - Appointments require manual approval
+   - Validate selected services against Neon
+   - Reject inactive or missing services
+   - Calculate official service totals
+   - Calculate appointment duration
+   - Save pending requests to Neon
+   - Generate private review links
+   - Notify Briana and the customer
+   - No deposit payment at request time
 ========================================= */
 
 const REVIEW_LINK_HOURS = 48;
-
 const WEBSITE_URL = 'https://www.inlovenailz.com';
 
+const MAX_SERVICES = 20;
+const MAX_QUANTITY = 10;
+const MAX_TOTAL_QUANTITY = 30;
+const MAX_REQUEST_BYTES = 100_000;
+
 /* =====================================
-   GENERATE PRIVATE REVIEW TOKEN
+   TYPES
 ===================================== */
 
-const createReviewToken = () => {
+type RequestedService = {
+  id: string;
+  quantity: number;
+};
+
+type ServiceDatabaseRow = {
+  id: string;
+  title: string;
+  description: string | null;
+  price: string | number;
+  duration_minutes: number;
+  category: string;
+  images: unknown;
+  is_active: boolean;
+};
+
+type CatalogService = {
+  id: string;
+  title: string;
+  description: string;
+  price: number;
+  duration: number;
+  category: string;
+  images: string[];
+  isActive: boolean;
+  deposit: number;
+};
+
+type VerifiedCartItem = {
+  service: CatalogService;
+  quantity: number;
+};
+
+class RequestValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RequestValidationError';
+  }
+}
+
+/* =====================================
+   PRIVATE REVIEW TOKEN
+===================================== */
+
+function createReviewToken() {
   const token = randomBytes(32).toString('hex');
 
   const tokenHash = createHash('sha256')
@@ -38,13 +86,395 @@ const createReviewToken = () => {
     token,
     tokenHash,
   };
-};
+}
 
 /* =====================================
-   REQUEST HANDLER
+   REQUEST BODY VALIDATION
 ===================================== */
 
-export default async function handler(req: any, res: any) {
+function parseRequestedServices(
+  value: unknown
+): RequestedService[] {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > MAX_SERVICES
+  ) {
+    throw new RequestValidationError(
+      'Please select between 1 and 20 services.'
+    );
+  }
+
+  const requested: RequestedService[] = [];
+  const seen = new Set<string>();
+
+  let totalQuantity = 0;
+
+  for (const item of value) {
+    if (
+      !item ||
+      typeof item !== 'object' ||
+      Array.isArray(item)
+    ) {
+      throw new RequestValidationError(
+        'Invalid selected service.'
+      );
+    }
+
+    const serviceId =
+      typeof item.service?.id === 'string'
+        ? item.service.id
+        : typeof item.id === 'string'
+          ? item.id
+          : '';
+
+    const quantity =
+      item.quantity === undefined
+        ? 1
+        : item.quantity;
+
+    if (
+      !serviceId ||
+      serviceId.length > 150 ||
+      !Number.isInteger(quantity) ||
+      quantity < 1 ||
+      quantity > MAX_QUANTITY ||
+      seen.has(serviceId)
+    ) {
+      throw new RequestValidationError(
+        'Invalid service selection or quantity.'
+      );
+    }
+
+    seen.add(serviceId);
+    totalQuantity += quantity;
+
+    requested.push({
+      id: serviceId,
+      quantity,
+    });
+  }
+
+  if (totalQuantity > MAX_TOTAL_QUANTITY) {
+    throw new RequestValidationError(
+      'Too many services selected.'
+    );
+  }
+
+  return requested;
+}
+
+/* =====================================
+   DATE AND TIME VALIDATION
+===================================== */
+
+function validateAppointmentDate(
+  date: string,
+  time: string
+) {
+  const dateMatch =
+    /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+
+  const timeMatch =
+    /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time);
+
+  if (!dateMatch || !timeMatch) {
+    throw new RequestValidationError(
+      'Please select a valid appointment date and time.'
+    );
+  }
+
+  const year = Number(dateMatch[1]);
+  const month = Number(dateMatch[2]);
+  const day = Number(dateMatch[3]);
+
+  const parsedDate = new Date(
+    Date.UTC(year, month - 1, day)
+  );
+
+  if (
+    parsedDate.getUTCFullYear() !== year ||
+    parsedDate.getUTCMonth() !== month - 1 ||
+    parsedDate.getUTCDate() !== day
+  ) {
+    throw new RequestValidationError(
+      'Please select a valid appointment date.'
+    );
+  }
+}
+
+/* =====================================
+   CUSTOMER DETAILS VALIDATION
+===================================== */
+
+function validateCustomerDetails(booking: {
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  appointmentDate: string;
+  appointmentTime: string;
+  notes?: string;
+  inspirationUrl?: string;
+}) {
+  if (
+    booking.customerName.length < 2 ||
+    booking.customerName.length > 150
+  ) {
+    throw new RequestValidationError(
+      'Please enter a valid customer name.'
+    );
+  }
+
+  if (
+    booking.customerEmail.length > 254 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+      booking.customerEmail
+    )
+  ) {
+    throw new RequestValidationError(
+      'Please enter a valid email address.'
+    );
+  }
+
+  if (
+    booking.customerPhone.length < 7 ||
+    booking.customerPhone.length > 30 ||
+    !/^[+\d().\s-]+$/.test(
+      booking.customerPhone
+    )
+  ) {
+    throw new RequestValidationError(
+      'Please enter a valid phone number.'
+    );
+  }
+
+  if ((booking.notes || '').length > 3000) {
+    throw new RequestValidationError(
+      'Appointment notes are too long.'
+    );
+  }
+
+  if (booking.inspirationUrl) {
+    let parsedUrl: URL;
+
+    try {
+      parsedUrl = new URL(
+        booking.inspirationUrl
+      );
+    } catch {
+      throw new RequestValidationError(
+        'Invalid inspiration image URL.'
+      );
+    }
+
+    if (
+      parsedUrl.protocol !== 'https:' ||
+      parsedUrl.hostname !==
+        'res.cloudinary.com' ||
+      booking.inspirationUrl.length > 2000
+    ) {
+      throw new RequestValidationError(
+        'Invalid inspiration image URL.'
+      );
+    }
+  }
+
+  validateAppointmentDate(
+    booking.appointmentDate,
+    booking.appointmentTime
+  );
+}
+
+/* =====================================
+   VERIFY SERVICES AGAINST NEON
+===================================== */
+
+async function verifyServices(
+  sql: ReturnType<typeof neon>,
+  requested: RequestedService[]
+): Promise<{
+  items: VerifiedCartItem[];
+  totalPrice: number;
+  durationMinutes: number;
+}> {
+  const ids = requested.map(item => item.id);
+
+  // Retrieve official catalog information.
+  const queryResult = await sql`
+    SELECT
+      id,
+      title,
+      description,
+      price,
+      duration_minutes,
+      category,
+      images,
+      is_active
+    FROM salon_services
+    WHERE id = ANY(${ids}::text[])
+  `;
+
+  // Neon supports multiple result formats.
+  // Verify that this query returned rows.
+  if (!Array.isArray(queryResult)) {
+    throw new Error(
+      'Unexpected response from the service database.'
+    );
+  }
+
+  // The SELECT statement above returns
+  // objects with these named columns.
+  const rows =
+    queryResult as ServiceDatabaseRow[];
+
+  const catalog = new Map<
+    string,
+    CatalogService
+  >();
+
+  for (const row of rows) {
+    const price = Number(row.price);
+
+    const duration = Number(
+      row.duration_minutes
+    );
+
+    if (
+      !Number.isFinite(price) ||
+      price < 0 ||
+      !Number.isInteger(duration) ||
+      duration <= 0
+    ) {
+      throw new Error(
+        'Invalid service data in Neon.'
+      );
+    }
+
+    const images = Array.isArray(row.images)
+      ? row.images.filter(
+          (image): image is string =>
+            typeof image === 'string'
+        )
+      : [];
+
+    catalog.set(String(row.id), {
+      id: String(row.id),
+      title: String(row.title),
+      description: String(
+        row.description || ''
+      ),
+      price,
+      duration,
+      category: String(row.category),
+      images,
+      isActive: row.is_active === true,
+      deposit: 0,
+    });
+  }
+
+  const verifiedItems: VerifiedCartItem[] = [];
+
+  let totalCents = 0;
+  let durationMinutes = 0;
+
+  for (const requestedItem of requested) {
+    const service = catalog.get(
+      requestedItem.id
+    );
+
+    if (!service || !service.isActive) {
+      throw new RequestValidationError(
+        'One or more selected services are no longer available. Please refresh your cart.'
+      );
+    }
+
+    const serviceCents = Math.round(
+      service.price * 100
+    );
+
+    totalCents +=
+      serviceCents * requestedItem.quantity;
+
+    durationMinutes +=
+      service.duration *
+      requestedItem.quantity;
+
+    verifiedItems.push({
+      service,
+      quantity: requestedItem.quantity,
+    });
+  }
+
+  if (
+    !Number.isSafeInteger(totalCents) ||
+    totalCents < 0 ||
+    durationMinutes > 1440
+  ) {
+    throw new RequestValidationError(
+      'The selected services exceed the allowed appointment limits.'
+    );
+  }
+
+  return {
+    items: verifiedItems,
+    totalPrice: totalCents / 100,
+    durationMinutes,
+  };
+}
+
+/* =====================================
+   EMAIL HTML HELPERS
+===================================== */
+
+function buildServicesHtml(
+  items: VerifiedCartItem[]
+): string {
+  return items
+    .map(item => {
+      const title = escapeHtml(
+        item.service.title
+      );
+
+      const quantity = item.quantity;
+
+      const lineTotal = (
+        item.service.price * quantity
+      ).toFixed(2);
+
+      return `
+        <li style="margin-bottom:8px;">
+          ${title} × ${quantity}
+          — $${lineTotal}
+        </li>
+      `;
+    })
+    .join('');
+}
+
+function buildEmailLayout(
+  content: string
+): string {
+  return `
+    <div style="
+      font-family:Arial,sans-serif;
+      color:#29252B;
+      line-height:1.6;
+      max-width:600px;
+      margin:0 auto;
+    ">
+      ${content}
+    </div>
+  `;
+}
+
+/* =====================================
+   MAIN REQUEST HANDLER
+===================================== */
+
+export default async function handler(
+  req: any,
+  res: any
+) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
 
@@ -53,55 +483,43 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader(
+    'Cache-Control',
+    'no-store'
+  );
 
   try {
-    /* =====================================
-       DATABASE CONNECTION
-    ===================================== */
+    const rawBody = req.body;
 
-    const databaseUrl = process.env.DATABASE_URL;
+    if (
+      !rawBody ||
+      typeof rawBody !== 'object' ||
+      Array.isArray(rawBody)
+    ) {
+      return res.status(400).json({
+        error: 'Invalid appointment request.',
+      });
+    }
+
+    const bodySize = Buffer.byteLength(
+      JSON.stringify(rawBody),
+      'utf8'
+    );
+
+    if (bodySize > MAX_REQUEST_BYTES) {
+      return res.status(413).json({
+        error: 'Appointment request is too large.',
+      });
+    }
+
+    const databaseUrl =
+      process.env.DATABASE_URL;
 
     if (!databaseUrl) {
-      throw new Error('DATABASE_URL is not configured');
+      throw new Error(
+        'DATABASE_URL is not configured'
+      );
     }
-
-    const sql = neon(databaseUrl);
-
-    /* =====================================
-       VALIDATE APPOINTMENT
-    ===================================== */
-
-    const booking = normalizeBooking(req.body || {});
-
-    if (
-      !booking.customerName ||
-      !booking.customerEmail ||
-      !booking.customerPhone ||
-      !booking.appointmentDate ||
-      !booking.appointmentTime ||
-      !booking.services.length ||
-      !Number.isFinite(booking.totalPrice) ||
-      booking.totalPrice < 0
-    ) {
-      return res.status(400).json({
-        error: 'Invalid or incomplete appointment details',
-      });
-    }
-
-    if (
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
-        booking.customerEmail
-      )
-    ) {
-      return res.status(400).json({
-        error: 'Please enter a valid email address',
-      });
-    }
-
-    /* =====================================
-       OWNER EMAIL
-    ===================================== */
 
     const ownerEmail =
       process.env.BOOKING_NOTIFICATION_EMAIL ||
@@ -109,25 +527,52 @@ export default async function handler(req: any, res: any) {
 
     if (!ownerEmail) {
       throw new Error(
-        'BOOKING_NOTIFICATION_EMAIL or BUSINESS_EMAIL is not configured'
+        'Booking notification email is not configured'
       );
     }
 
-    /* =====================================
-       GENERATE SECURE REVIEW LINK
-    ===================================== */
+    const booking = normalizeBooking(rawBody);
 
-    const { token, tokenHash } = createReviewToken();
+    validateCustomerDetails(booking);
 
-    const reviewTokenExpiresAt = new Date(
-      Date.now() + REVIEW_LINK_HOURS * 60 * 60 * 1000
+    const requestedServices =
+      parseRequestedServices(
+        rawBody.services
+      );
+
+    const sql = neon(databaseUrl);
+
+    // Never trust customer-submitted prices.
+    const verified = await verifyServices(
+      sql,
+      requestedServices
     );
 
+    booking.services = verified.items;
+    booking.totalPrice =
+      verified.totalPrice;
+
     /* =====================================
-       SAVE APPOINTMENT TO NEON
+       GENERATE PRIVATE REVIEW LINK
     ===================================== */
 
-    const savedRows = await sql`
+    const { token, tokenHash } =
+      createReviewToken();
+
+    const reviewTokenExpiresAt =
+      new Date(
+        Date.now() +
+          REVIEW_LINK_HOURS *
+            60 *
+            60 *
+            1000
+      );
+
+    /* =====================================
+       SAVE VERIFIED REQUEST TO NEON
+    ===================================== */
+
+    const insertResult = await sql`
       INSERT INTO appointment_requests (
         customer_name,
         customer_email,
@@ -136,6 +581,7 @@ export default async function handler(req: any, res: any) {
         appointment_time,
         services,
         total_price,
+        duration_minutes,
         notes,
         inspiration_url,
         status,
@@ -148,8 +594,9 @@ export default async function handler(req: any, res: any) {
         ${booking.customerPhone},
         ${booking.appointmentDate},
         ${booking.appointmentTime},
-        ${JSON.stringify(booking.services)}::jsonb,
-        ${booking.totalPrice},
+        ${JSON.stringify(verified.items)}::jsonb,
+        ${verified.totalPrice},
+        ${verified.durationMinutes},
         ${booking.notes || null},
         ${booking.inspirationUrl || null},
         'pending',
@@ -159,13 +606,28 @@ export default async function handler(req: any, res: any) {
       RETURNING id
     `;
 
-    if (!savedRows.length || !savedRows[0]?.id) {
+    if (
+      !Array.isArray(insertResult) ||
+      !insertResult.length
+    ) {
       throw new Error(
-        'Appointment database insert returned no ID'
+        'Appointment insert returned no rows.'
       );
     }
 
-    const appointmentId = String(savedRows[0].id);
+    const insertedRows = insertResult as {
+      id: string | number;
+    }[];
+
+    if (!insertedRows[0]?.id) {
+      throw new Error(
+        'Appointment insert returned no ID.'
+      );
+    }
+
+    const appointmentId = String(
+      insertedRows[0].id
+    );
 
     console.log(
       'Appointment request saved:',
@@ -177,47 +639,33 @@ export default async function handler(req: any, res: any) {
     ===================================== */
 
     const configuredUrl =
-      process.env.APP_URL?.trim() || WEBSITE_URL;
+      process.env.APP_URL?.trim() ||
+      WEBSITE_URL;
 
-    const baseUrl = configuredUrl.replace(/\/+$/, '');
+    const baseUrl =
+      configuredUrl.replace(/\/+$/, '');
 
     const reviewUrl = new URL(
       '/api/review-appointment',
       baseUrl
     );
 
-    reviewUrl.searchParams.set('id', appointmentId);
-    reviewUrl.searchParams.set('token', token);
+    reviewUrl.searchParams.set(
+      'id',
+      appointmentId
+    );
 
-    const privateReviewLink = reviewUrl.toString();
+    reviewUrl.searchParams.set(
+      'token',
+      token
+    );
+
+    const privateReviewLink =
+      reviewUrl.toString();
 
     /* =====================================
-       PREPARE SERVICE DETAILS
+       ESCAPE CUSTOMER INFORMATION
     ===================================== */
-
-    const servicesHtml = booking.services
-      .map(item => {
-        const service = item.service || item;
-
-        const quantity = Number(item.quantity) || 1;
-
-        const title = escapeHtml(
-          String(service.title || 'Nail service')
-        );
-
-        const price = Number(service.price);
-
-        const priceText = Number.isFinite(price)
-          ? `$${(price * quantity).toFixed(2)}`
-          : 'Price unavailable';
-
-        return `
-          <li style="margin-bottom:8px;">
-            ${title} × ${quantity} — ${priceText}
-          </li>
-        `;
-      })
-      .join('');
 
     const customerName = escapeHtml(
       booking.customerName
@@ -244,46 +692,58 @@ export default async function handler(req: any, res: any) {
     );
 
     const notes = escapeHtml(
-      String(
-        booking.notes ||
+      booking.notes ||
         'No additional notes provided'
-      )
     );
 
-    const inspirationUrl = String(
-      booking.inspirationUrl || ''
-    );
+    const serviceTotal =
+      verified.totalPrice.toFixed(2);
 
-    const safeInspirationUrl =
-      /^https:\/\/[^\s"'<>]+$/i.test(inspirationUrl)
-        ? escapeHtml(inspirationUrl)
-        : '';
-
-    const serviceTotal = booking.totalPrice.toFixed(2);
+    const servicesHtml =
+      buildServicesHtml(
+        verified.items
+      );
 
     const safeReviewLink = escapeHtml(
       privateReviewLink
     );
 
+    const inspirationUrl =
+      booking.inspirationUrl || '';
+
+    const safeInspirationUrl =
+      inspirationUrl
+        ? escapeHtml(inspirationUrl)
+        : '';
+
+    const inspirationHtml =
+      safeInspirationUrl
+        ? `
+          <p>
+            <a
+              href="${safeInspirationUrl}"
+              style="color:#963F60;"
+            >
+              View Inspiration Photo
+            </a>
+          </p>
+        `
+        : '';
+
     /* =====================================
-       EMAIL BRIANA
+       OWNER EMAIL NOTIFICATION
     ===================================== */
 
-    const ownerEmailHtml = `
-      <div style="
-        font-family:Arial,sans-serif;
-        color:#29252B;
-        line-height:1.6;
-        max-width:600px;
-        margin:0 auto;
-      ">
+    const ownerEmailHtml =
+      buildEmailLayout(`
         <h1 style="color:#963F60;">
           New Appointment Request
         </h1>
 
         <p>
-          A client has submitted a new appointment
-          request through the InLoveNailz website.
+          A client has submitted a new
+          appointment request through
+          InLoveNailz.
         </p>
 
         <p>
@@ -328,13 +788,17 @@ export default async function handler(req: any, res: any) {
           Selected Services
         </h2>
 
-        <ul>
-          ${servicesHtml}
-        </ul>
+        <ul>${servicesHtml}</ul>
 
-        <p style="font-size:18px;">
+        <p>
           <strong>Service Total:</strong>
           $${serviceTotal}
+        </p>
+
+        <p>
+          <strong>Estimated Duration:</strong>
+          ${verified.durationMinutes}
+          minutes
         </p>
 
         <h2 style="color:#963F60;">
@@ -343,20 +807,7 @@ export default async function handler(req: any, res: any) {
 
         <p>${notes}</p>
 
-        ${
-          safeInspirationUrl
-            ? `
-              <p>
-                <a
-                  href="${safeInspirationUrl}"
-                  style="color:#963F60;"
-                >
-                  View Inspiration Photo
-                </a>
-              </p>
-            `
-            : ''
-        }
+        ${inspirationHtml}
 
         <hr style="
           border:1px solid #EAC5D0;
@@ -373,14 +824,14 @@ export default async function handler(req: any, res: any) {
         </p>
 
         <p>
-          This appointment request has been
-          saved to the InLoveNailz database.
+          This request has been saved
+          to the InLoveNailz database.
         </p>
 
         <p>
-          Use your private review link to
-          review the request when the approval
-          system is available.
+          Use the private review link
+          when the approval system
+          is available.
         </p>
 
         <p style="margin:24px 0;">
@@ -404,11 +855,10 @@ export default async function handler(req: any, res: any) {
           font-size:13px;
           color:#806B75;
         ">
-          This private review link expires
-          after ${REVIEW_LINK_HOURS} hours.
-
-          Do not forward this email or share
-          the review link with customers.
+          This private review link
+          expires after
+          ${REVIEW_LINK_HOURS} hours.
+          Do not share it with customers.
         </p>
 
         <p style="
@@ -416,25 +866,18 @@ export default async function handler(req: any, res: any) {
           color:#806B75;
         ">
           The review page is being set up.
-          Until it is available, you can
-          review this request using the
-          appointment details in this email.
+          Until it is available, review
+          the request using the details
+          in this email.
         </p>
-      </div>
-    `;
+      `);
 
     /* =====================================
-       EMAIL CUSTOMER
+       CUSTOMER EMAIL NOTIFICATION
     ===================================== */
 
-    const customerEmailHtml = `
-      <div style="
-        font-family:Arial,sans-serif;
-        color:#29252B;
-        line-height:1.6;
-        max-width:600px;
-        margin:0 auto;
-      ">
+    const customerEmailHtml =
+      buildEmailLayout(`
         <h1 style="color:#963F60;">
           Appointment Request Received!
         </h1>
@@ -442,11 +885,13 @@ export default async function handler(req: any, res: any) {
         <p>Hi ${customerName},</p>
 
         <p>
-          Thank you for choosing InLoveNailz
-          by Briana!
+          Thank you for choosing
+          InLoveNailz by Briana!
+        </p>
 
-          We have received your appointment
-          request.
+        <p>
+          We have received your
+          appointment request.
         </p>
 
         <p>
@@ -470,9 +915,7 @@ export default async function handler(req: any, res: any) {
 
         <h3>Your Services</h3>
 
-        <ul>
-          ${servicesHtml}
-        </ul>
+        <ul>${servicesHtml}</ul>
 
         <p>
           <strong>Service Total:</strong>
@@ -493,8 +936,11 @@ export default async function handler(req: any, res: any) {
           padding:16px;
         ">
           <strong>
-            Your appointment is not yet confirmed.
+            Your appointment is not yet
+            confirmed.
           </strong>
+
+          <br>
 
           No payment is required to submit
           your appointment request.
@@ -509,16 +955,14 @@ export default async function handler(req: any, res: any) {
           Thank you for supporting
           InLoveNailz!
         </p>
-      </div>
-    `;
+      `);
 
     /* =====================================
        SEND EMAIL NOTIFICATIONS
     ===================================== */
 
-    // The appointment has already been saved.
-    // Email delivery failures are logged,
-    // but do not undo the saved request.
+    // Request is already saved.
+    // Email failures do not undo it.
 
     try {
       await sendEmail(
@@ -526,10 +970,10 @@ export default async function handler(req: any, res: any) {
         'InLoveNailz | New Appointment Request',
         ownerEmailHtml
       );
-    } catch (ownerEmailError) {
+    } catch (error) {
       console.error(
-        'Briana notification email failed:',
-        ownerEmailError
+        'Owner notification failed:',
+        error
       );
     }
 
@@ -539,10 +983,10 @@ export default async function handler(req: any, res: any) {
         'InLoveNailz | Appointment Request Received',
         customerEmailHtml
       );
-    } catch (customerEmailError) {
+    } catch (error) {
       console.error(
-        'Customer acknowledgment email failed:',
-        customerEmailError
+        'Customer notification failed:',
+        error
       );
     }
 
@@ -558,6 +1002,14 @@ export default async function handler(req: any, res: any) {
         'Your appointment request has been received and is pending review.',
     });
   } catch (error: unknown) {
+    if (
+      error instanceof RequestValidationError
+    ) {
+      return res.status(400).json({
+        error: error.message,
+      });
+    }
+
     console.error(
       'Request appointment error:',
       error
