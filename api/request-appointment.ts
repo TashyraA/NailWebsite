@@ -1,4 +1,6 @@
 
+import { neon } from '@neondatabase/serverless';
+
 import { normalizeBooking } from './_booking.js';
 import { escapeHtml, sendEmail } from './_email.js';
 
@@ -6,8 +8,9 @@ import { escapeHtml, sendEmail } from './_email.js';
    INLOVENAILZ BY BRIANA
    APPOINTMENT REQUEST API
 
-   - No automatic payment requests
-   - No Stripe Checkout sessions
+   - Save appointment requests to Neon
+   - No automatic deposit payments
+   - No Stripe Checkout at request time
    - Email Briana appointment details
    - Email customer acknowledgment
    - Appointments require manual approval
@@ -21,9 +24,24 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
+    /* =====================================
+       DATABASE CONNECTION
+    ===================================== */
+
+    const databaseUrl = process.env.DATABASE_URL;
+
+    if (!databaseUrl) {
+      throw new Error('DATABASE_URL is not configured');
+    }
+
+    const sql = neon(databaseUrl);
+
+    /* =====================================
+       VALIDATE APPOINTMENT
+    ===================================== */
+
     const booking = normalizeBooking(req.body || {});
 
-    // Validate the appointment request.
     if (
       !booking.customerName ||
       !booking.customerEmail ||
@@ -39,7 +57,6 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // Validate customer email.
     if (
       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
         booking.customerEmail
@@ -50,17 +67,59 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // Configure Briana's notification address in
-    // the hosting environment.
-    const ownerEmail = process.env.BOOKING_NOTIFICATION_EMAIL;
+    const ownerEmail =
+      process.env.BOOKING_NOTIFICATION_EMAIL ||
+      process.env.BUSINESS_EMAIL;
 
     if (!ownerEmail) {
       throw new Error(
-        'BOOKING_NOTIFICATION_EMAIL is not configured'
+        'BOOKING_NOTIFICATION_EMAIL or BUSINESS_EMAIL is not configured'
       );
     }
 
-    // Prepare service details for the emails.
+    /* =====================================
+       SAVE APPOINTMENT TO NEON
+    ===================================== */
+
+    const savedRows = await sql`
+      INSERT INTO appointment_requests (
+        customer_name,
+        customer_email,
+        customer_phone,
+        appointment_date,
+        appointment_time,
+        services,
+        total_price,
+        notes,
+        inspiration_url,
+        status
+      )
+      VALUES (
+        ${booking.customerName},
+        ${booking.customerEmail},
+        ${booking.customerPhone},
+        ${booking.appointmentDate},
+        ${booking.appointmentTime},
+        ${JSON.stringify(booking.services)}::jsonb,
+        ${booking.totalPrice},
+        ${booking.notes || null},
+        ${booking.inspirationUrl || null},
+        'pending'
+      )
+      RETURNING id
+    `;
+
+    const appointmentId = String(savedRows[0].id);
+
+    console.log(
+      'Appointment request saved successfully:',
+      appointmentId
+    );
+
+    /* =====================================
+       PREPARE EMAIL DETAILS
+    ===================================== */
+
     const servicesHtml = booking.services
       .map(item => {
         const service = item.service || item;
@@ -89,9 +148,12 @@ export default async function handler(req: any, res: any) {
     const customerPhone = escapeHtml(booking.customerPhone);
     const appointmentDate = escapeHtml(booking.appointmentDate);
     const appointmentTime = escapeHtml(booking.appointmentTime);
+    const safeAppointmentId = escapeHtml(appointmentId);
 
     const notes = escapeHtml(
-      String(booking.notes || 'No additional notes provided')
+      String(
+        booking.notes || 'No additional notes provided'
+      )
     );
 
     const inspirationUrl = String(
@@ -100,7 +162,7 @@ export default async function handler(req: any, res: any) {
 
     const safeInspirationUrl =
       /^https:\/\/[^\s"'<>]+$/i.test(inspirationUrl)
-        ? inspirationUrl.replace(/&/g, '&amp;')
+        ? escapeHtml(inspirationUrl)
         : '';
 
     /* =====================================
@@ -122,6 +184,11 @@ export default async function handler(req: any, res: any) {
         <p>
           A client has submitted a new appointment
           request through the InLoveNailz website.
+        </p>
+
+        <p>
+          <strong>Request ID:</strong>
+          ${safeAppointmentId}
         </p>
 
         <h2 style="color:#963F60;">
@@ -162,8 +229,10 @@ export default async function handler(req: any, res: any) {
           safeInspirationUrl
             ? `
               <p>
-                <a href="${safeInspirationUrl}"
-                   style="color:#963F60;">
+                <a
+                  href="${safeInspirationUrl}"
+                  style="color:#963F60;"
+                >
                   View Inspiration Photo
                 </a>
               </p>
@@ -179,18 +248,16 @@ export default async function handler(req: any, res: any) {
         </p>
 
         <p>
-          Please review the requested appointment
-          and contact the client with the next steps.
+          This appointment request has been saved
+          to the InLoveNailz database.
+        </p>
+
+        <p>
+          Please review the appointment request
+          before requesting a deposit.
         </p>
       </div>
     `;
-
-    // Briana's email is required for a successful request.
-    await sendEmail(
-      ownerEmail,
-      'InLoveNailz | New Appointment Request',
-      ownerEmailHtml
-    );
 
     /* =====================================
        EMAIL CUSTOMER
@@ -215,6 +282,11 @@ export default async function handler(req: any, res: any) {
           We have received your appointment request.
         </p>
 
+        <p>
+          <strong>Request ID:</strong>
+          ${safeAppointmentId}
+        </p>
+
         <h2 style="color:#963F60;">
           Your Requested Appointment
         </h2>
@@ -235,7 +307,8 @@ export default async function handler(req: any, res: any) {
 
         <p>
           Briana will review your request and
-          contact you with the next steps.
+          email you with the required deposit
+          amount and next steps if approved.
         </p>
 
         <p style="
@@ -247,8 +320,13 @@ export default async function handler(req: any, res: any) {
           <strong>
             Your appointment is not yet confirmed.
           </strong>
-          You will receive an official confirmation
-          once your appointment has been approved.
+
+          No payment is required to submit
+          your appointment request.
+
+          Your appointment will only be confirmed
+          after approval and successful payment
+          of the required deposit.
         </p>
 
         <p>
@@ -257,8 +335,27 @@ export default async function handler(req: any, res: any) {
       </div>
     `;
 
-    // Customer email is helpful, but a failure here
-    // should not cause a duplicate appointment request.
+    /* =====================================
+       SEND EMAIL NOTIFICATIONS
+    ===================================== */
+
+    // The request has already been saved.
+    // Email failures must not cause the customer
+    // to resubmit and create duplicate requests.
+
+    try {
+      await sendEmail(
+        ownerEmail,
+        'InLoveNailz | New Appointment Request',
+        ownerEmailHtml
+      );
+    } catch (ownerEmailError) {
+      console.error(
+        'Briana notification email failed:',
+        ownerEmailError
+      );
+    }
+
     try {
       await sendEmail(
         booking.customerEmail,
@@ -272,15 +369,27 @@ export default async function handler(req: any, res: any) {
       );
     }
 
+    /* =====================================
+       SUCCESS RESPONSE
+    ===================================== */
+
     return res.status(200).json({
       success: true,
+      appointmentId,
+      status: 'pending',
+      message:
+        'Your appointment request has been received and is pending review.',
     });
+
   } catch (error: unknown) {
-    console.error('Request appointment error:', error);
+    console.error(
+      'Request appointment error:',
+      error
+    );
 
     return res.status(500).json({
       error:
-        'Unable to submit your appointment request. Please try again.',
+        'Unable to save your appointment request. Please try again.',
     });
   }
 }

@@ -12,6 +12,7 @@
     "noUnusedParameters": false
   },
   "include": [
+    "api/test-database.ts",
     "api/approve-appointment.ts",
     "api/request-appointment.ts",
     "api/stripe-webhook.ts",
