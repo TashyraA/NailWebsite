@@ -6,7 +6,7 @@ import { ArrowRight } from 'lucide-react';
 import ServiceCarousel from '@/components/ServiceCarousel';
 
 /* =========================================
-   INLOVENAILZ — HOMEPAGE
+   INLOVENAILZ — RESPONSIVE HOMEPAGE
 ========================================= */
 
 const carouselImages: string[] = [
@@ -23,13 +23,6 @@ const carouselImages: string[] = [
   '/services/service-11.jpg',
   '/services/service-12.jpg',
 ];
-
-/* =========================================
-   FEATURED SERVICES
-
-   Uses the custom berry-pink hand illustration
-   stored in public/inlovenailz-hand-icon.png
-========================================= */
 
 const featuredServices = [
   {
@@ -87,89 +80,90 @@ const FlowingHeart = ({
 
 const Home = () => {
   return (
-    <main className="min-h-screen bg-[#FFF7F8] text-[#29252B]">
+    <main className="min-h-screen w-full min-w-0 overflow-x-clip bg-[#FFF7F8] text-[#29252B]">
 
       {/* =====================================
           HERO SECTION
+          SLIGHTLY TALLER — NO CROPPING
       ===================================== */}
 
-      <section
-        className="
-          relative isolate
-          overflow-hidden
-          bg-[#21191F]
-          text-white
-        "
-      >
-        {/* HERO IMAGE */}
+      <section className="relative isolate w-full overflow-hidden bg-[#21191F] text-white">
 
-        <div
+        {/*
+          FULL-WIDTH STUDIO PHOTO
+
+          The photo is slightly stretched vertically
+          on smaller screens when needed.
+
+          No object-cover cropping.
+          No empty background strips.
+          Natural proportions return on desktop.
+        */}
+
+        <img
+          src="/hero-background.png"
+          alt="InLoveNailz nail studio"
+          fetchPriority="high"
           className="
-            absolute inset-0 -z-20
-            bg-[url('/hero-background.png')]
-            bg-cover
-            bg-[65%_center]
-            bg-no-repeat
-            lg:bg-[length:100%_100%]
-            lg:bg-center
+            block h-auto w-full max-w-none
+            min-h-[225px]
+            sm:min-h-[290px]
+            md:min-h-0
           "
-          aria-hidden="true"
         />
 
-        {/* GRADIENT FOR TEXT READABILITY */}
+        {/* GRADIENT OVER IMAGE */}
 
         <div
           className="
-            absolute inset-0 -z-10
+            pointer-events-none
+            absolute inset-0 z-0
             bg-gradient-to-r
             from-[#21191F]/90
-            via-[#21191F]/65
+            via-[#21191F]/55
             to-transparent
-            lg:from-[#21191F]/60
-            lg:via-[#21191F]/15
-            lg:to-transparent
+            md:from-[#21191F]/85
+            md:via-[#21191F]/45
+            lg:from-[#21191F]/65
+            lg:via-[#21191F]/25
           "
           aria-hidden="true"
         />
 
-        {/* HERO CONTENT */}
+        {/* HERO CONTENT OVER IMAGE */}
 
         <div
           className="
-            relative z-10 mx-auto
-            flex min-h-[480px]
+            absolute inset-0 z-10
+            mx-auto flex w-full
             max-w-[1180px]
             items-center
-            px-6 py-12
-            sm:min-h-[500px]
-            md:px-8
-            lg:min-h-0
-            lg:aspect-[1920/650]
-            lg:py-8
+            px-3 py-2
+            sm:px-6 sm:py-3
+            md:px-8 md:py-6
+            lg:px-10
           "
         >
-          <div className="w-full max-w-[510px]">
+          <div className="w-full min-w-0 max-w-[510px]">
 
             {/* LOCATION */}
 
-            <div className="mb-5 flex items-center gap-4">
+            <div className="mb-1 flex flex-wrap items-center gap-2 sm:mb-2 md:mb-4">
               <p
                 className="
-                  text-[9px] font-semibold
-                  uppercase tracking-[0.28em]
+                  text-[clamp(6px,1.6vw,10px)]
+                  font-semibold uppercase
+                  tracking-[0.08em]
                   text-[#F7DDE4]
-                  sm:text-[10px]
+                  sm:tracking-[0.18em]
+                  md:tracking-[0.28em]
                 "
               >
                 Cleveland, Ohio · Licensed Manicurist
               </p>
 
               <span
-                className="
-                  hidden h-px w-9 shrink-0
-                  bg-[#EFA1B7]/65
-                  sm:block
-                "
+                className="hidden h-px w-9 shrink-0 bg-[#EFA1B7]/65 md:block"
                 aria-hidden="true"
               />
             </div>
@@ -178,10 +172,9 @@ const Home = () => {
 
             <h1
               className="
-                font-serif
-                text-[clamp(2.35rem,4vw,3.9rem)]
-                font-normal
-                leading-[1.02]
+                max-w-full font-serif
+                text-[clamp(15px,4.5vw,62px)]
+                font-normal leading-[1.04]
                 tracking-[-0.025em]
                 text-white
               "
@@ -198,11 +191,12 @@ const Home = () => {
 
             <p
               className="
-                mt-4 max-w-[410px]
-                text-[12px]
-                leading-[1.8]
+                mt-1 max-w-[410px]
+                text-[clamp(7px,1.7vw,13px)]
+                leading-[1.35]
                 text-white/90
-                sm:text-[13px]
+                sm:mt-2 sm:leading-[1.5]
+                md:mt-4 md:leading-[1.8]
               "
             >
               Elevated nail sets, detailed designs,
@@ -212,25 +206,30 @@ const Home = () => {
 
             {/* HERO BUTTONS */}
 
-            <div className="mt-6 flex flex-wrap gap-3">
+            <div className="mt-2 flex flex-wrap gap-1.5 sm:mt-3 sm:gap-2 md:mt-6 md:gap-3">
               <Link
                 to="/book"
                 className="
-                  inline-flex min-h-[42px]
+                  inline-flex min-h-[27px]
                   items-center justify-center
-                  gap-3 rounded-[6px]
+                  gap-1 rounded-[5px]
                   bg-[#963F60]
-                  px-6 py-2.5
-                  text-[11px] font-semibold
-                  text-white
+                  px-2 py-1
+                  text-center text-[8px]
+                  font-semibold text-white
                   transition-colors duration-200
                   hover:bg-[#79324F]
+                  sm:min-h-[34px]
+                  sm:px-3 sm:text-[10px]
+                  md:min-h-[44px]
+                  md:gap-2 md:px-6
+                  md:py-2.5 md:text-[11px]
                 "
               >
                 Book an Appointment
-
                 <ArrowRight
-                  size={14}
+                  size={12}
+                  className="shrink-0 md:h-[14px] md:w-[14px]"
                   aria-hidden="true"
                 />
               </Link>
@@ -238,15 +237,20 @@ const Home = () => {
               <Link
                 to="/services"
                 className="
-                  inline-flex min-h-[42px]
+                  inline-flex min-h-[27px]
                   items-center justify-center
-                  rounded-[6px]
+                  rounded-[5px]
                   border border-white/60
-                  px-6 py-2.5
-                  text-[11px] font-semibold
-                  text-white
+                  px-2 py-1
+                  text-center text-[8px]
+                  font-semibold text-white
                   transition-colors duration-200
                   hover:bg-white/10
+                  sm:min-h-[34px]
+                  sm:px-3 sm:text-[10px]
+                  md:min-h-[44px]
+                  md:px-6 md:py-2.5
+                  md:text-[11px]
                 "
               >
                 View Services
@@ -263,14 +267,15 @@ const Home = () => {
       <section
         id="nail-edit"
         className="
-          overflow-hidden
+          w-full overflow-hidden
           bg-[#FFF7F8]
-          px-4 pt-10 pb-8
-          md:pt-12 md:pb-10
+          px-3 pb-8 pt-9
+          sm:px-5 sm:pt-10
+          md:pb-10 md:pt-12
         "
       >
-        <div className="mx-auto mb-6 max-w-[650px] text-center">
-          <div className="flex items-center justify-center gap-4">
+        <div className="mx-auto mb-6 max-w-[650px] px-2 text-center">
+          <div className="flex items-center justify-center gap-3 sm:gap-4">
             <span
               className="hidden h-px w-12 bg-[#EFA1B7] sm:block"
               aria-hidden="true"
@@ -295,77 +300,89 @@ const Home = () => {
           <h2
             className="
               mt-2 font-serif
-              text-[clamp(2.5rem,4vw,3.4rem)]
-              font-normal leading-none
+              text-[clamp(2.1rem,6vw,3.4rem)]
+              font-normal leading-[1.1]
               text-[#29252B]
             "
           >
             The Nail Edit
           </h2>
 
-          <p className="mt-2 text-[12px] text-[#70636A]">
+          <p className="mx-auto mt-2 max-w-[400px] text-[12px] leading-relaxed text-[#70636A]">
             A look at some of our most loved sets.
           </p>
         </div>
 
-        <div className="mx-auto max-w-[1150px]">
+        <div className="mx-auto w-full min-w-0 max-w-[1150px] overflow-hidden">
           <ServiceCarousel images={carouselImages} />
         </div>
       </section>
 
       {/* =====================================
           THREE SERVICE CATEGORIES
+          THREE ACROSS ON MOBILE
       ===================================== */}
 
       <section
         id="featured-services"
         className="
-          bg-[#F7DDE4]/60
-          px-5 py-7
+          w-full bg-[#F7DDE4]/60
+          px-2 py-5
+          sm:px-6 sm:py-8
           md:py-9
         "
       >
         <div
           className="
-            mx-auto grid max-w-[1100px]
-            grid-cols-1
-            md:grid-cols-3
+            mx-auto grid w-full
+            max-w-[1100px]
+            grid-cols-3
           "
         >
           {featuredServices.map((service, index) => (
             <article
               key={service.title}
               className={`
-                px-5 py-5 text-center
-                md:px-7 md:py-2
+                flex min-w-0 flex-col
+                items-center justify-start
+                px-1.5 py-3 text-center
+                sm:px-5 sm:py-4
+                md:px-4
+                lg:px-7
                 ${
                   index > 0
-                    ? 'border-t border-[#963F60]/15 md:border-l md:border-t-0'
+                    ? 'border-l border-[#963F60]/15'
                     : ''
                 }
               `}
             >
-              {/* CUSTOM ELEGANT HAND ILLUSTRATION */}
+              {/* CUSTOM HAND ILLUSTRATION */}
 
               <img
                 src="/inlovenailz-hand-icon.png"
                 alt=""
                 aria-hidden="true"
                 loading="lazy"
+                width={60}
+                height={60}
                 className="
                   mx-auto mb-2
-                  block h-[55px] w-[55px]
-                  object-contain
-                  sm:h-[60px] sm:w-[60px]
+                  block h-8 w-8
+                  shrink-0 object-contain
+                  min-[400px]:h-10
+                  min-[400px]:w-10
+                  sm:h-[54px] sm:w-[54px]
+                  lg:h-[60px] lg:w-[60px]
                 "
               />
 
               <h3
                 className="
-                  font-serif text-[23px]
-                  font-medium
-                  leading-tight
+                  font-serif
+                  text-[clamp(0.9rem,3.5vw,1.45rem)]
+                  font-medium leading-tight
                   text-[#29252B]
+                  [overflow-wrap:anywhere]
                 "
               >
                 {service.title}
@@ -375,9 +392,11 @@ const Home = () => {
                 className="
                   mx-auto mt-1
                   max-w-[290px]
-                  text-[11px]
-                  leading-[1.6]
+                  text-[10px]
+                  leading-[1.45]
                   text-[#70636A]
+                  sm:text-[11px]
+                  sm:leading-[1.6]
                 "
               >
                 {service.description}
@@ -395,11 +414,13 @@ const Home = () => {
         id="about"
         aria-labelledby="about-heading"
         className="
-          relative isolate overflow-hidden
+          relative isolate w-full
+          overflow-hidden
           bg-[#FFF9FA]
-          px-8 py-14
-          sm:px-12 sm:py-16
-          lg:px-16 lg:py-16
+          px-7 py-14
+          sm:px-10 sm:py-16
+          md:px-12
+          lg:px-16
         "
       >
         {/* SOFT PINK NEON TUBING BORDER */}
@@ -407,12 +428,14 @@ const Home = () => {
         <div
           className="
             pointer-events-none
-            absolute inset-[12px]
+            absolute inset-[10px]
             z-20
-            rounded-[28px]
+            rounded-[22px]
             border-[3px] border-[#FFEAF2]
-            sm:inset-[18px]
-            sm:rounded-[34px]
+            sm:inset-[16px]
+            sm:rounded-[30px]
+            lg:inset-[18px]
+            lg:rounded-[34px]
           "
           style={{
             boxShadow: `
@@ -430,12 +453,14 @@ const Home = () => {
         <div
           className="
             pointer-events-none
-            absolute inset-[14px]
+            absolute inset-[12px]
             z-0
-            rounded-[26px]
+            rounded-[20px]
             shadow-[inset_0_0_35px_rgba(255,153,190,0.12)]
-            sm:inset-[20px]
-            sm:rounded-[32px]
+            sm:inset-[18px]
+            sm:rounded-[28px]
+            lg:inset-[20px]
+            lg:rounded-[32px]
           "
           aria-hidden="true"
         />
@@ -447,10 +472,11 @@ const Home = () => {
             pointer-events-none
             absolute -left-24 top-0
             -z-10
-            h-[300px] w-[300px]
+            h-[220px] w-[220px]
             rounded-full
             bg-[#F7DDE4]/35
-            blur-[80px]
+            blur-[70px]
+            sm:h-[300px] sm:w-[300px]
           "
           aria-hidden="true"
         />
@@ -477,13 +503,14 @@ const Home = () => {
         <div
           className="
             relative z-10
-            mx-auto grid
+            mx-auto grid w-full
             max-w-[940px]
-            items-center
-            gap-8
-            md:grid-cols-[320px_1fr]
-            md:gap-12
-            lg:gap-16
+            min-w-0 items-center
+            gap-7
+            md:grid-cols-[minmax(0,280px)_minmax(0,1fr)]
+            md:gap-9
+            lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]
+            lg:gap-12
           "
         >
           {/* PORTRAIT */}
@@ -491,9 +518,10 @@ const Home = () => {
           <div
             className="
               relative mx-auto
-              w-full max-w-[260px]
-              sm:max-w-[280px]
-              md:max-w-[320px]
+              w-full max-w-[230px]
+              sm:max-w-[270px]
+              md:max-w-[280px]
+              lg:max-w-[320px]
             "
           >
             {/* OFFSET FRAME */}
@@ -501,8 +529,8 @@ const Home = () => {
             <div
               className="
                 absolute
-                -bottom-2 -right-3
-                left-3 top-3
+                -bottom-2 -right-2
+                left-2 top-2
                 rounded-t-[160px]
                 rounded-b-[14px]
                 border border-[#C9809B]/45
@@ -517,9 +545,10 @@ const Home = () => {
                 relative overflow-hidden
                 rounded-t-[160px]
                 rounded-b-[14px]
-                border-[5px] border-white
+                border-[4px] border-white
                 bg-[#F7DDE4]
                 shadow-[0_14px_35px_rgba(112,43,68,0.12)]
+                sm:border-[5px]
               "
             >
               <img
@@ -528,7 +557,7 @@ const Home = () => {
                 loading="lazy"
                 className="
                   block aspect-[4/4.6]
-                  w-full
+                  h-auto w-full
                   object-cover object-top
                 "
               />
@@ -537,13 +566,13 @@ const Home = () => {
 
           {/* ABOUT TEXT */}
 
-          <div className="text-center md:text-left">
+          <div className="min-w-0 text-center md:text-left">
 
             {/* EYEBROW */}
 
             <div
               className="
-                flex items-center
+                flex flex-wrap items-center
                 justify-center gap-3
                 md:justify-start
               "
@@ -555,9 +584,11 @@ const Home = () => {
 
               <p
                 className="
-                  text-[10px] font-semibold
-                  uppercase tracking-[0.26em]
+                  text-[9px] font-semibold
+                  uppercase tracking-[0.2em]
                   text-[#963F60]
+                  sm:text-[10px]
+                  sm:tracking-[0.26em]
                 "
               >
                 Meet Your Nail Artist
@@ -570,7 +601,7 @@ const Home = () => {
               id="about-heading"
               className="
                 mt-4 font-serif
-                text-[clamp(2.5rem,4vw,3.6rem)]
+                text-[clamp(2.1rem,5vw,3.6rem)]
                 font-normal
                 leading-[1.1]
                 tracking-[-0.03em]
@@ -602,7 +633,7 @@ const Home = () => {
                 mx-auto mt-5
                 max-w-[490px]
                 font-serif
-                text-[clamp(1.1rem,1.8vw,1.3rem)]
+                text-[clamp(1.05rem,2vw,1.3rem)]
                 leading-[1.55]
                 text-[#3D3038]
                 md:mx-0
@@ -619,9 +650,10 @@ const Home = () => {
               className="
                 mx-auto mt-4
                 max-w-[470px]
-                text-[13px]
+                text-[12px]
                 leading-[1.8]
                 text-[#766D73]
+                sm:text-[13px]
                 md:mx-0
               "
             >
@@ -640,12 +672,13 @@ const Home = () => {
       <section
         className="
           relative isolate
-          flex min-h-[160px]
+          flex w-full min-h-[160px]
           items-center justify-center
           overflow-hidden
           bg-[#963F60]
-          px-6 py-7
+          px-5 py-9
           text-center text-white
+          sm:px-6
           md:min-h-[180px]
         "
       >
@@ -673,13 +706,13 @@ const Home = () => {
 
         {/* BANNER CONTENT */}
 
-        <div className="mx-auto max-w-[650px]">
+        <div className="mx-auto w-full max-w-[650px]">
           <h2
             className="
               font-serif
-              text-[clamp(2rem,4vw,2.9rem)]
+              text-[clamp(1.8rem,5vw,2.9rem)]
               font-normal italic
-              leading-tight text-white
+              leading-[1.15] text-white
             "
           >
             Ready for Your Next Set?
@@ -687,7 +720,8 @@ const Home = () => {
 
           <p
             className="
-              mx-auto mt-2
+              mx-auto mt-3
+              max-w-[460px]
               text-[11px]
               leading-relaxed
               text-white/90
@@ -701,11 +735,11 @@ const Home = () => {
           <Link
             to="/book"
             className="
-              mt-4 inline-flex min-h-[36px]
+              mt-5 inline-flex min-h-[44px]
               items-center justify-center
               gap-2 rounded-[5px]
               bg-[#FFF7F8]
-              px-6 py-2
+              px-6 py-2.5
               text-[11px] font-semibold
               text-[#963F60]
               transition-colors duration-200
@@ -713,11 +747,7 @@ const Home = () => {
             "
           >
             Book Now
-
-            <ArrowRight
-              size={14}
-              aria-hidden="true"
-            />
+            <ArrowRight size={14} aria-hidden="true" />
           </Link>
         </div>
       </section>

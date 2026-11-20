@@ -1,92 +1,286 @@
-import { normalizeBooking, signBooking } from './_booking.js';
+
+import { normalizeBooking } from './_booking.js';
 import { escapeHtml, sendEmail } from './_email.js';
 
-const DEPOSIT_CENTS = 2000;
+/* =========================================
+   INLOVENAILZ BY BRIANA
+   APPOINTMENT REQUEST API
 
-// Stripe limits each metadata value to 500 characters. Split the signed
-// booking token so bookings with multiple services still fit.
-const bookingMetadata = (token: string) => {
-  const chunks = token.match(/.{1,450}/g) || [];
-  if (!chunks.length || chunks.length > 20) throw new Error('Booking details are too long');
-  return Object.fromEntries(chunks.map((chunk, index) => [
-    `metadata[booking_token_${index}]`, chunk,
-  ]));
-};
+   - No automatic payment requests
+   - No Stripe Checkout sessions
+   - Email Briana appointment details
+   - Email customer acknowledgment
+   - Appointments require manual approval
+========================================= */
 
 export default async function handler(req: any, res: any) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== 'POST') {
+    return res.status(405).json({
+      error: 'Method not allowed',
+    });
+  }
 
   try {
-    const stripeKey = process.env.STRIPE_SECRET_KEY;
-    if (!stripeKey) throw new Error('Stripe is not configured');
-    if (!process.env.BOOKING_LINK_SECRET) throw new Error('Booking signing secret is not configured');
-
     const booking = normalizeBooking(req.body || {});
-    if (!booking.customerName || !booking.customerEmail || !booking.customerPhone ||
-        !booking.appointmentDate || !booking.appointmentTime || !booking.services.length ||
-        !Number.isFinite(booking.totalPrice) || booking.totalPrice < 20 ||
-        !Number.isFinite(booking.balanceDue) || booking.depositPaid !== 20 ||
-        Math.abs(booking.balanceDue - (booking.totalPrice - 20)) > 0.01) {
-      return res.status(400).json({ error: 'Invalid or incomplete appointment details' });
+
+    // Validate the appointment request.
+    if (
+      !booking.customerName ||
+      !booking.customerEmail ||
+      !booking.customerPhone ||
+      !booking.appointmentDate ||
+      !booking.appointmentTime ||
+      !booking.services.length ||
+      !Number.isFinite(booking.totalPrice) ||
+      booking.totalPrice < 0
+    ) {
+      return res.status(400).json({
+        error: 'Invalid or incomplete appointment details',
+      });
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(booking.customerEmail)) {
-      return res.status(400).json({ error: 'Please enter a valid email address' });
+
+    // Validate customer email.
+    if (
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+        booking.customerEmail
+      )
+    ) {
+      return res.status(400).json({
+        error: 'Please enter a valid email address',
+      });
     }
 
-    // IMPORTANT: Before launch, calculate prices/durations from a trusted server-side
-    // service catalog and check calendar availability here. Client totals are untrusted.
-    const bookingToken = signBooking(booking);
-    const origin = process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:5173');
-    const params = new URLSearchParams({
-      mode: 'payment',
-      success_url: `${origin}/booking-confirmation?deposit=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/book`,
-      customer_email: booking.customerEmail,
-      'line_items[0][price_data][currency]': 'usd',
-      'line_items[0][price_data][product_data][name]': 'InLoveNailz appointment deposit',
-      'line_items[0][price_data][unit_amount]': String(DEPOSIT_CENTS),
-      'line_items[0][quantity]': '1',
-      'metadata[payment_type]': 'deposit',
-      ...bookingMetadata(bookingToken),
-      // Checkout Session expires in 24 hours if unpaid.
-      expires_at: String(Math.floor(Date.now() / 1000) + 24 * 60 * 60),
-    });
+    // Configure Briana's notification address in
+    // the hosting environment.
+    const ownerEmail = process.env.BOOKING_NOTIFICATION_EMAIL;
 
-    const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${stripeKey}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params,
-    });
-    const session = await response.json();
-    if (!response.ok || !session.url) throw new Error(session.error?.message || 'Unable to create deposit payment link');
+    if (!ownerEmail) {
+      throw new Error(
+        'BOOKING_NOTIFICATION_EMAIL is not configured'
+      );
+    }
 
-    const services = booking.services.map(item =>
-      `${item.service?.title || item.title || 'Nail service'} x${item.quantity || 1}`
-    ).join(', ');
+    // Prepare service details for the emails.
+    const servicesHtml = booking.services
+      .map(item => {
+        const service = item.service || item;
+        const quantity = Number(item.quantity) || 1;
+
+        const title = escapeHtml(
+          String(service.title || 'Nail service')
+        );
+
+        const price = Number(service.price);
+
+        const priceText = Number.isFinite(price)
+          ? `$${(price * quantity).toFixed(2)}`
+          : 'Price unavailable';
+
+        return `
+          <li style="margin-bottom:8px;">
+            ${title} × ${quantity} — ${priceText}
+          </li>
+        `;
+      })
+      .join('');
+
+    const customerName = escapeHtml(booking.customerName);
+    const customerEmail = escapeHtml(booking.customerEmail);
+    const customerPhone = escapeHtml(booking.customerPhone);
+    const appointmentDate = escapeHtml(booking.appointmentDate);
+    const appointmentTime = escapeHtml(booking.appointmentTime);
+
+    const notes = escapeHtml(
+      String(booking.notes || 'No additional notes provided')
+    );
+
+    const inspirationUrl = String(
+      booking.inspirationUrl || ''
+    );
+
+    const safeInspirationUrl =
+      /^https:\/\/[^\s"'<>]+$/i.test(inspirationUrl)
+        ? inspirationUrl.replace(/&/g, '&amp;')
+        : '';
+
+    /* =====================================
+       EMAIL BRIANA
+    ===================================== */
+
+    const ownerEmailHtml = `
+      <div style="
+        font-family:Arial,sans-serif;
+        color:#29252B;
+        line-height:1.6;
+        max-width:600px;
+        margin:0 auto;
+      ">
+        <h1 style="color:#963F60;">
+          New Appointment Request
+        </h1>
+
+        <p>
+          A client has submitted a new appointment
+          request through the InLoveNailz website.
+        </p>
+
+        <h2 style="color:#963F60;">
+          Customer Information
+        </h2>
+
+        <p><strong>Name:</strong> ${customerName}</p>
+        <p><strong>Email:</strong> ${customerEmail}</p>
+        <p><strong>Phone:</strong> ${customerPhone}</p>
+
+        <h2 style="color:#963F60;">
+          Requested Appointment
+        </h2>
+
+        <p><strong>Date:</strong> ${appointmentDate}</p>
+        <p><strong>Time:</strong> ${appointmentTime}</p>
+
+        <h2 style="color:#963F60;">
+          Selected Services
+        </h2>
+
+        <ul>
+          ${servicesHtml}
+        </ul>
+
+        <p style="font-size:18px;">
+          <strong>Service Total:</strong>
+          $${booking.totalPrice.toFixed(2)}
+        </p>
+
+        <h2 style="color:#963F60;">
+          Appointment Notes
+        </h2>
+
+        <p>${notes}</p>
+
+        ${
+          safeInspirationUrl
+            ? `
+              <p>
+                <a href="${safeInspirationUrl}"
+                   style="color:#963F60;">
+                  View Inspiration Photo
+                </a>
+              </p>
+            `
+            : ''
+        }
+
+        <hr style="border:1px solid #EAC5D0;">
+
+        <p>
+          <strong>Status:</strong>
+          Pending Review
+        </p>
+
+        <p>
+          Please review the requested appointment
+          and contact the client with the next steps.
+        </p>
+      </div>
+    `;
+
+    // Briana's email is required for a successful request.
+    await sendEmail(
+      ownerEmail,
+      'InLoveNailz | New Appointment Request',
+      ownerEmailHtml
+    );
+
+    /* =====================================
+       EMAIL CUSTOMER
+    ===================================== */
+
+    const customerEmailHtml = `
+      <div style="
+        font-family:Arial,sans-serif;
+        color:#29252B;
+        line-height:1.6;
+        max-width:600px;
+        margin:0 auto;
+      ">
+        <h1 style="color:#963F60;">
+          Appointment Request Received!
+        </h1>
+
+        <p>Hi ${customerName},</p>
+
+        <p>
+          Thank you for choosing InLoveNailz by Briana!
+          We have received your appointment request.
+        </p>
+
+        <h2 style="color:#963F60;">
+          Your Requested Appointment
+        </h2>
+
+        <p><strong>Date:</strong> ${appointmentDate}</p>
+        <p><strong>Time:</strong> ${appointmentTime}</p>
+
+        <h3>Your Services</h3>
+
+        <ul>
+          ${servicesHtml}
+        </ul>
+
+        <p>
+          <strong>Service Total:</strong>
+          $${booking.totalPrice.toFixed(2)}
+        </p>
+
+        <p>
+          Briana will review your request and
+          contact you with the next steps.
+        </p>
+
+        <p style="
+          background:#FFF7F8;
+          border:1px solid #EAC5D0;
+          border-radius:12px;
+          padding:16px;
+        ">
+          <strong>
+            Your appointment is not yet confirmed.
+          </strong>
+          You will receive an official confirmation
+          once your appointment has been approved.
+        </p>
+
+        <p>
+          Thank you for supporting InLoveNailz!
+        </p>
+      </div>
+    `;
+
+    // Customer email is helpful, but a failure here
+    // should not cause a duplicate appointment request.
     try {
       await sendEmail(
-      booking.customerEmail,
-      'InLoveNailz | Pay your $20 appointment deposit',
-      `<h2>Thank you for requesting an appointment!</h2>
-       <p>Hi ${escapeHtml(booking.customerName)},</p>
-       <p>We received your request for <strong>${escapeHtml(booking.appointmentDate)}</strong> at <strong>${escapeHtml(booking.appointmentTime)}</strong>.</p>
-       <p>Services: ${escapeHtml(services)}</p>
-       <p>Total: $${booking.totalPrice.toFixed(2)} | Deposit: $20.00 | Remaining balance: $${booking.balanceDue.toFixed(2)}</p>
-       <p><a href="${escapeHtml(session.url)}" style="display:inline-block;padding:14px 22px;background:#963F60;color:white;border-radius:30px;text-decoration:none;font-weight:bold">Pay $20 Deposit Securely</a></p>
-       <p>This payment link expires in 24 hours. Your requested time is <strong>not yet reserved or confirmed</strong>. After payment, Briana will review your request and email you an approval or decline decision.</p>`
-    );
-    } catch (emailError) {
-      // Don't leave a payable Checkout Session behind if the email failed.
-      try {
-        await fetch(`https://api.stripe.com/v1/checkout/sessions/${session.id}/expire`, {
-          method: 'POST', headers: { Authorization: `Bearer ${stripeKey}` },
-        });
-      } catch (expireError) { console.error('Could not expire unused session', expireError); }
-      throw emailError;
+        booking.customerEmail,
+        'InLoveNailz | Appointment Request Received',
+        customerEmailHtml
+      );
+    } catch (customerEmailError) {
+      console.error(
+        'Customer acknowledgment email failed:',
+        customerEmailError
+      );
     }
-    return res.status(200).json({ success: true });
-  } catch (error: any) {
+
+    return res.status(200).json({
+      success: true,
+    });
+  } catch (error: unknown) {
     console.error('Request appointment error:', error);
-    return res.status(500).json({ error: 'Unable to send deposit email. Please try again.' });
+
+    return res.status(500).json({
+      error:
+        'Unable to submit your appointment request. Please try again.',
+    });
   }
 }

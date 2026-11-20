@@ -17,20 +17,6 @@ interface ServiceCardProps {
   service: Service;
 }
 
-/* =========================================
-   INLOVENAILZ BY BRIANA
-   LUXURY MARBLE SPA MENU
-
-   - Uses /marble.png from public folder
-   - Horizontal luxury menu design
-   - Circular nail photos
-   - Elegant champagne-gold borders
-   - No favorite hearts or logic
-   - No visible category badges
-   - Category data preserved
-   - Existing booking functionality preserved
-========================================= */
-
 const ServiceCard: React.FC<ServiceCardProps> = ({
   service,
 }) => {
@@ -41,10 +27,6 @@ const ServiceCard: React.FC<ServiceCardProps> = ({
   const [justAdded, setJustAdded] = useState(false);
 
   const image = service.images?.[0];
-
-  /* =====================================
-     FORMAT DURATION
-  ===================================== */
 
   const formatDuration = (minutes: number) => {
     const hours = Math.floor(minutes / 60);
@@ -60,10 +42,6 @@ const ServiceCard: React.FC<ServiceCardProps> = ({
 
     return `${hours} hr ${remaining} min`;
   };
-
-  /* =====================================
-     SERVICE PRICE LABELS
-  ===================================== */
 
   const priceLabels: Record<string, string> = {
     'acrylic-long-xl': '$100–$140',
@@ -82,10 +60,6 @@ const ServiceCard: React.FC<ServiceCardProps> = ({
       service.id
     );
 
-  /* =====================================
-     ADD TO BOOKING
-  ===================================== */
-
   const handleAddToCart = () => {
     addToCart(service);
     setJustAdded(true);
@@ -100,15 +74,16 @@ const ServiceCard: React.FC<ServiceCardProps> = ({
     <article
       data-category={service.category}
       className="
-        group relative flex h-full flex-col
-        overflow-hidden rounded-[28px]
+        group relative flex h-full min-w-0
+        flex-col overflow-hidden
+        rounded-[17px]
         border border-[#E5C17B]
         bg-[#FFF7F8]
-        shadow-[0_10px_30px_rgba(150,63,96,0.09)]
+        shadow-[0_8px_22px_rgba(150,63,96,0.09)]
         transition-all duration-300
-        hover:-translate-y-1
-        hover:shadow-[0_18px_45px_rgba(150,63,96,0.15)]
-        sm:flex-row sm:items-center
+        hover:shadow-[0_14px_35px_rgba(150,63,96,0.15)]
+        sm:rounded-[24px]
+        xl:flex-row xl:items-center
       "
       style={{
         backgroundImage: "url('/marble.png')",
@@ -117,32 +92,31 @@ const ServiceCard: React.FC<ServiceCardProps> = ({
         backgroundRepeat: 'no-repeat',
       }}
     >
-      {/* SUBTLE WHITE OVERLAY FOR READABILITY */}
+      {/* WHITE OVERLAY */}
 
       <div
         aria-hidden="true"
-        className="
-          pointer-events-none absolute inset-0
-          bg-white/15
-        "
+        className="pointer-events-none absolute inset-0 bg-white/15"
       />
 
-      {/* =====================================
-          CIRCULAR SERVICE PHOTO
-      ===================================== */}
+      {/* RESPONSIVE CIRCULAR PHOTO */}
 
       <div
         className="
-          relative z-10 mx-auto mt-6
-          h-[205px] w-[205px]
-          shrink-0
-          overflow-hidden rounded-full
-          border-[5px] border-[#E5C17B]
+          relative z-10 mx-auto mt-3
+          h-[clamp(78px,25vw,112px)]
+          w-[clamp(78px,25vw,112px)]
+          shrink-0 overflow-hidden
+          rounded-full
+          border-[3px] border-[#E5C17B]
           bg-[#F7DDE4]
-          shadow-[0_8px_24px_rgba(150,63,96,0.12)]
-          sm:ml-6 sm:mr-0 sm:mt-0
-          sm:h-[165px] sm:w-[165px]
-          lg:h-[185px] lg:w-[185px]
+          shadow-[0_6px_18px_rgba(150,63,96,0.12)]
+          sm:mt-5
+          sm:h-[145px] sm:w-[145px]
+          lg:h-[165px] lg:w-[165px]
+          xl:ml-5 xl:mr-0 xl:mt-0
+          xl:h-[145px] xl:w-[145px]
+          2xl:h-[165px] 2xl:w-[165px]
         "
       >
         {image && !imageFailed ? (
@@ -163,39 +137,41 @@ const ServiceCard: React.FC<ServiceCardProps> = ({
             className="
               flex h-full w-full flex-col
               items-center justify-center
-              gap-2 text-[#963F60]
+              gap-1 text-[#963F60]
             "
           >
             <ImageOff
-              size={30}
+              size={22}
               strokeWidth={1.5}
             />
 
-            <span className="px-4 text-center text-xs">
+            <span className="px-2 text-center text-[9px] leading-tight sm:text-xs">
               Photo coming soon
             </span>
           </div>
         )}
       </div>
 
-      {/* =====================================
-          SERVICE INFORMATION
-      ===================================== */}
+      {/* SERVICE INFORMATION */}
 
       <div
         className="
           relative z-10 flex min-w-0
           flex-1 flex-col
-          p-5 sm:p-6
+          p-2.5 pt-3
+          sm:p-5
+          xl:p-5
         "
       >
-        {/* SERVICE TITLE */}
+        {/* TITLE */}
 
         <h3
           className="
-            font-serif text-[23px]
-            leading-tight text-[#38212A]
-            sm:text-[24px]
+            break-words font-serif
+            text-[15px] leading-[1.2]
+            text-[#38212A]
+            sm:text-[21px]
+            lg:text-[23px]
           "
         >
           {service.title}
@@ -205,86 +181,64 @@ const ServiceCard: React.FC<ServiceCardProps> = ({
 
         <p
           className="
-            mt-2 text-sm
-            leading-relaxed text-[#806B75]
+            mt-1.5 break-words
+            text-[10px] leading-[1.45]
+            text-[#806B75]
+            sm:mt-2 sm:text-sm
           "
         >
           {service.description}
         </p>
 
-        {/* =====================================
-            DURATION AND DEPOSIT
-        ===================================== */}
+        {/* SERVICE DURATION */}
 
         <div
           className="
-            mt-4 flex flex-wrap
-            items-center gap-x-4 gap-y-2
-            text-xs font-medium
+            mt-3 flex flex-col
+            items-start gap-1.5
+            text-[10px] font-medium
             text-[#704C5B]
-            sm:text-sm
+            sm:mt-4 sm:flex-row
+            sm:flex-wrap sm:gap-x-4
+            sm:gap-y-2 sm:text-xs
+            lg:text-sm
           "
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <Clock3
-              size={17}
-              className="text-[#C76B8A]"
+              size={14}
+              className="shrink-0 text-[#C76B8A]"
             />
 
             <span>
               {formatDuration(service.duration)}
             </span>
           </div>
-
-          <span
-            className="hidden h-4 w-px bg-[#E9C5D0] sm:block"
-            aria-hidden="true"
-          />
-
-          <div className="flex items-center gap-2">
-            <span
-              className="
-                flex h-6 w-6
-                items-center justify-center
-                rounded-full bg-[#F7DDE4]
-                text-xs font-bold
-                text-[#963F60]
-              "
-            >
-              $
-            </span>
-
-            <span>
-              ${service.deposit} deposit
-            </span>
-          </div>
         </div>
 
         {/* DIVIDER */}
 
-        <div className="my-4 h-px w-full bg-[#EAC8D2]" />
+        <div className="my-3 h-px w-full bg-[#EAC8D2] sm:my-4" />
 
-        {/* =====================================
-            PRICE AND BOOKING BUTTON
-        ===================================== */}
+        {/* PRICE AND BOOKING */}
 
         <div
           className="
-            mt-auto flex flex-col
-            gap-4
+            mt-auto flex min-w-0
+            flex-col gap-3
             xl:flex-row xl:items-end
             xl:justify-between
           "
         >
-          {/* PRICE */}
-
           <div className="min-w-0">
             <p
               className="
-                mb-1 text-[10px]
+                mb-1 text-[8px]
                 font-semibold uppercase
-                tracking-[0.18em]
+                tracking-[0.1em]
                 text-[#A57C8C]
+                sm:text-[10px]
+                sm:tracking-[0.18em]
               "
             >
               {hasVariablePrice
@@ -294,15 +248,18 @@ const ServiceCard: React.FC<ServiceCardProps> = ({
 
             <p
               className="
-                text-[30px] font-bold
-                leading-none text-[#963F60]
+                break-words text-[20px]
+                font-bold leading-none
+                text-[#963F60]
+                sm:text-[27px]
+                lg:text-[30px]
               "
             >
               {priceLabel}
             </p>
 
             {hasVariablePrice && (
-              <p className="mt-2 text-xs text-[#8E7A85]">
+              <p className="mt-1.5 text-[9px] text-[#8E7A85] sm:text-xs">
                 Final price may vary.
               </p>
             )}
@@ -314,31 +271,39 @@ const ServiceCard: React.FC<ServiceCardProps> = ({
             type="button"
             onClick={handleAddToCart}
             className="
-              h-12 w-full
+              h-auto min-h-[40px] w-full
               shrink-0 rounded-full
               border-0 bg-[#963F60]
-              px-5 text-sm font-semibold
-              text-white
+              px-2 py-2
+              text-[10px] font-semibold
+              leading-tight text-white
               shadow-[0_6px_18px_rgba(150,63,96,0.18)]
               transition-all duration-300
-              hover:-translate-y-0.5
               hover:bg-[#79324F]
               hover:shadow-[0_10px_24px_rgba(150,63,96,0.28)]
               focus-visible:outline
               focus-visible:outline-2
               focus-visible:outline-offset-2
               focus-visible:outline-[#963F60]
+              sm:min-h-[46px]
+              sm:px-4 sm:text-sm
               xl:w-auto
             "
           >
             {justAdded ? (
               <>
-                <Check size={17} className="mr-2" />
+                <Check
+                  size={14}
+                  className="mr-1 shrink-0 sm:mr-2"
+                />
                 Add Another
               </>
             ) : (
               <>
-                <ShoppingBag size={17} className="mr-2" />
+                <ShoppingBag
+                  size={14}
+                  className="mr-1 shrink-0 sm:mr-2"
+                />
                 Add to Booking
               </>
             )}
