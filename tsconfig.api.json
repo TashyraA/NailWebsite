@@ -12,6 +12,7 @@
     "noUnusedParameters": false
   },
   "include": [
+    "api/admin-logout.ts",
     "api/admin-session.ts",
     "api/admin-login.ts",
     "api/services.ts",
