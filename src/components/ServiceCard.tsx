@@ -1,9 +1,9 @@
 
 import React, { useState } from 'react';
 import { Service } from '@/types';
+
 import {
   Clock3,
-  Heart,
   ShoppingBag,
   Check,
   ImageOff,
@@ -17,19 +17,35 @@ interface ServiceCardProps {
   service: Service;
 }
 
+/* =========================================
+   INLOVENAILZ BY BRIANA
+   LUXURY MARBLE SPA MENU
+
+   - Uses /marble.png from public folder
+   - Horizontal luxury menu design
+   - Circular nail photos
+   - Elegant champagne-gold borders
+   - No favorite hearts or logic
+   - No visible category badges
+   - Category data preserved
+   - Existing booking functionality preserved
+========================================= */
+
 const ServiceCard: React.FC<ServiceCardProps> = ({
   service,
 }) => {
   const { addToCart } = useCart();
   const { toast } = useToast();
 
-  const [isFavorite, setIsFavorite] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
 
   const image = service.images?.[0];
 
-  // Display appointment durations clearly.
+  /* =====================================
+     FORMAT DURATION
+  ===================================== */
+
   const formatDuration = (minutes: number) => {
     const hours = Math.floor(minutes / 60);
     const remaining = minutes % 60;
@@ -45,7 +61,10 @@ const ServiceCard: React.FC<ServiceCardProps> = ({
     return `${hours} hr ${remaining} min`;
   };
 
-  // Some services have variable final prices.
+  /* =====================================
+     SERVICE PRICE LABELS
+  ===================================== */
+
   const priceLabels: Record<string, string> = {
     'acrylic-long-xl': '$100–$140',
     'freestyle-short': '$90+',
@@ -63,43 +82,67 @@ const ServiceCard: React.FC<ServiceCardProps> = ({
       service.id
     );
 
+  /* =====================================
+     ADD TO BOOKING
+  ===================================== */
+
   const handleAddToCart = () => {
     addToCart(service);
-
     setJustAdded(true);
 
     toast({
       title: 'Added to booking! 💗',
       description: `${service.title} has been added to your booking.`,
     });
-
-    // The cart remains the source of truth.
-    // Reset the temporary button label when the
-    // component is used again.
-  };
-
-  const handleFavorite = () => {
-    setIsFavorite(previous => !previous);
   };
 
   return (
     <article
+      data-category={service.category}
       className="
-        group flex h-full flex-col
-        overflow-hidden rounded-[24px]
-        border border-[#F7DDE4]
-        bg-white
-        shadow-[0_8px_30px_rgba(150,63,96,0.08)]
+        group relative flex h-full flex-col
+        overflow-hidden rounded-[28px]
+        border border-[#E5C17B]
+        bg-[#FFF7F8]
+        shadow-[0_10px_30px_rgba(150,63,96,0.09)]
         transition-all duration-300
         hover:-translate-y-1
-        hover:shadow-[0_18px_45px_rgba(150,63,96,0.16)]
+        hover:shadow-[0_18px_45px_rgba(150,63,96,0.15)]
+        sm:flex-row sm:items-center
       "
+      style={{
+        backgroundImage: "url('/marble.png')",
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+      }}
     >
-      {/* NAIL PHOTO */}
+      {/* SUBTLE WHITE OVERLAY FOR READABILITY */}
+
+      <div
+        aria-hidden="true"
+        className="
+          pointer-events-none absolute inset-0
+          bg-white/15
+        "
+      />
+
+      {/* =====================================
+          CIRCULAR SERVICE PHOTO
+      ===================================== */}
+
       <div
         className="
-          relative aspect-[4/3]
-          overflow-hidden bg-[#F7DDE4]
+          relative z-10 mx-auto mt-6
+          h-[205px] w-[205px]
+          shrink-0
+          overflow-hidden rounded-full
+          border-[5px] border-[#E5C17B]
+          bg-[#F7DDE4]
+          shadow-[0_8px_24px_rgba(150,63,96,0.12)]
+          sm:ml-6 sm:mr-0 sm:mt-0
+          sm:h-[165px] sm:w-[165px]
+          lg:h-[185px] lg:w-[185px]
         "
       >
         {image && !imageFailed ? (
@@ -109,9 +152,10 @@ const ServiceCard: React.FC<ServiceCardProps> = ({
             loading="lazy"
             onError={() => setImageFailed(true)}
             className="
-              h-full w-full object-cover
-              transition-transform duration-700
-              group-hover:scale-105
+              block h-full w-full
+              object-contain object-center
+              transition-transform duration-500
+              group-hover:scale-[1.03]
             "
           />
         ) : (
@@ -119,118 +163,71 @@ const ServiceCard: React.FC<ServiceCardProps> = ({
             className="
               flex h-full w-full flex-col
               items-center justify-center
-              gap-3 bg-[#FFF1F5]
-              text-[#963F60]
+              gap-2 text-[#963F60]
             "
           >
-            <ImageOff size={32} strokeWidth={1.5} />
+            <ImageOff
+              size={30}
+              strokeWidth={1.5}
+            />
 
-            <span className="px-4 text-center text-xs font-medium">
+            <span className="px-4 text-center text-xs">
               Photo coming soon
             </span>
           </div>
         )}
-
-        {/* CATEGORY */}
-        <span
-          className="
-            absolute left-3 top-3
-            max-w-[75%]
-            rounded-full bg-white/95
-            px-3 py-1.5
-            text-[10px] font-semibold
-            uppercase tracking-[0.08em]
-            text-[#963F60]
-            shadow-sm backdrop-blur-sm
-            sm:text-xs
-          "
-        >
-          {service.category}
-        </span>
-
-        {/* FAVORITE BUTTON */}
-        <button
-          type="button"
-          onClick={handleFavorite}
-          aria-label={
-            isFavorite
-              ? `Remove ${service.title} from favorites`
-              : `Add ${service.title} to favorites`
-          }
-          aria-pressed={isFavorite}
-          className="
-            absolute right-3 top-3
-            flex h-10 w-10
-            items-center justify-center
-            rounded-full bg-white/95
-            text-[#963F60]
-            shadow-sm backdrop-blur-sm
-            transition-all duration-200
-            hover:scale-110
-            focus-visible:outline
-            focus-visible:outline-2
-            focus-visible:outline-offset-2
-            focus-visible:outline-[#963F60]
-          "
-        >
-          <Heart
-            size={19}
-            fill={isFavorite ? '#EFA1B7' : 'none'}
-            strokeWidth={1.8}
-          />
-        </button>
       </div>
 
-      {/* CARD CONTENT */}
+      {/* =====================================
+          SERVICE INFORMATION
+      ===================================== */}
+
       <div
         className="
-          flex flex-1 flex-col
-          px-5 pb-5 pt-5
-          sm:px-6 sm:pb-6
+          relative z-10 flex min-w-0
+          flex-1 flex-col
+          p-5 sm:p-6
         "
       >
-        {/* SERVICE NAME */}
+        {/* SERVICE TITLE */}
+
         <h3
           className="
-            mb-2 text-lg font-bold
-            leading-snug text-[#29252B]
-            sm:text-xl
+            font-serif text-[23px]
+            leading-tight text-[#38212A]
+            sm:text-[24px]
           "
         >
           {service.title}
         </h3>
 
         {/* DESCRIPTION */}
+
         <p
           className="
-            mb-5 line-clamp-3
-            min-h-[60px]
-            text-sm leading-relaxed
-            text-[#766D73]
+            mt-2 text-sm
+            leading-relaxed text-[#806B75]
           "
         >
           {service.description}
         </p>
 
-        {/* DURATION AND DEPOSIT */}
+        {/* =====================================
+            DURATION AND DEPOSIT
+        ===================================== */}
+
         <div
           className="
-            mb-5 flex flex-wrap
-            items-center gap-x-5 gap-y-2
-            border-t border-[#F7DDE4]
-            pt-4
+            mt-4 flex flex-wrap
+            items-center gap-x-4 gap-y-2
+            text-xs font-medium
+            text-[#704C5B]
+            sm:text-sm
           "
         >
-          <div
-            className="
-              flex items-center gap-2
-              text-xs font-medium
-              text-[#6D6269]
-              sm:text-sm
-            "
-          >
+          <div className="flex items-center gap-2">
             <Clock3
-              size={16}
+              size={17}
               className="text-[#C76B8A]"
             />
 
@@ -239,20 +236,18 @@ const ServiceCard: React.FC<ServiceCardProps> = ({
             </span>
           </div>
 
-          <div
-            className="
-              flex items-center gap-2
-              text-xs font-medium
-              text-[#6D6269]
-              sm:text-sm
-            "
-          >
+          <span
+            className="hidden h-4 w-px bg-[#E9C5D0] sm:block"
+            aria-hidden="true"
+          />
+
+          <div className="flex items-center gap-2">
             <span
               className="
-                flex h-5 w-5
+                flex h-6 w-6
                 items-center justify-center
-                rounded-full bg-[#FCEAF0]
-                text-[11px] font-bold
+                rounded-full bg-[#F7DDE4]
+                text-xs font-bold
                 text-[#963F60]
               "
             >
@@ -265,66 +260,90 @@ const ServiceCard: React.FC<ServiceCardProps> = ({
           </div>
         </div>
 
-        {/* PRICE */}
-        <div className="mb-5 mt-auto">
-          <p
-            className="
-              mb-1 text-[11px]
-              font-semibold uppercase
-              tracking-[0.14em]
-              text-[#A28B96]
-            "
-          >
-            {hasVariablePrice
-              ? 'Starting price / range'
-              : 'Service price'}
-          </p>
+        {/* DIVIDER */}
 
-          <p
-            className="
-              text-[27px] font-bold
-              leading-tight text-[#963F60]
-              sm:text-[30px]
-            "
-          >
-            {priceLabel}
-          </p>
+        <div className="my-4 h-px w-full bg-[#EAC8D2]" />
 
-          {hasVariablePrice && (
-            <p className="mt-1 text-xs text-[#8E7A85]">
-              Final price may vary.
-            </p>
-          )}
-        </div>
+        {/* =====================================
+            PRICE AND BOOKING BUTTON
+        ===================================== */}
 
-        {/* ADD TO BOOKING */}
-        <Button
-          type="button"
-          onClick={handleAddToCart}
+        <div
           className="
-            h-12 w-full
-            rounded-xl border-0
-            bg-[#963F60]
-            text-sm font-semibold
-            text-white
-            shadow-[0_5px_15px_rgba(150,63,96,0.15)]
-            transition-all duration-300
-            hover:bg-[#7D3250]
-            hover:shadow-[0_8px_20px_rgba(150,63,96,0.25)]
+            mt-auto flex flex-col
+            gap-4
+            xl:flex-row xl:items-end
+            xl:justify-between
           "
         >
-          {justAdded ? (
-            <>
-              <Check size={18} className="mr-2" />
-              Add Another
-            </>
-          ) : (
-            <>
-              <ShoppingBag size={18} className="mr-2" />
-              Add to Booking
-            </>
-          )}
-        </Button>
+          {/* PRICE */}
+
+          <div className="min-w-0">
+            <p
+              className="
+                mb-1 text-[10px]
+                font-semibold uppercase
+                tracking-[0.18em]
+                text-[#A57C8C]
+              "
+            >
+              {hasVariablePrice
+                ? 'Starting price / range'
+                : 'Service price'}
+            </p>
+
+            <p
+              className="
+                text-[30px] font-bold
+                leading-none text-[#963F60]
+              "
+            >
+              {priceLabel}
+            </p>
+
+            {hasVariablePrice && (
+              <p className="mt-2 text-xs text-[#8E7A85]">
+                Final price may vary.
+              </p>
+            )}
+          </div>
+
+          {/* ADD TO BOOKING */}
+
+          <Button
+            type="button"
+            onClick={handleAddToCart}
+            className="
+              h-12 w-full
+              shrink-0 rounded-full
+              border-0 bg-[#963F60]
+              px-5 text-sm font-semibold
+              text-white
+              shadow-[0_6px_18px_rgba(150,63,96,0.18)]
+              transition-all duration-300
+              hover:-translate-y-0.5
+              hover:bg-[#79324F]
+              hover:shadow-[0_10px_24px_rgba(150,63,96,0.28)]
+              focus-visible:outline
+              focus-visible:outline-2
+              focus-visible:outline-offset-2
+              focus-visible:outline-[#963F60]
+              xl:w-auto
+            "
+          >
+            {justAdded ? (
+              <>
+                <Check size={17} className="mr-2" />
+                Add Another
+              </>
+            ) : (
+              <>
+                <ShoppingBag size={17} className="mr-2" />
+                Add to Booking
+              </>
+            )}
+          </Button>
+        </div>
       </div>
     </article>
   );

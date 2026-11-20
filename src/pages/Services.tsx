@@ -9,7 +9,6 @@ import ServiceCard from '@/components/ServiceCard';
 import {
   ArrowRight,
   CalendarDays,
-  Gem,
   Heart,
   Loader2,
   ShoppingBag,
@@ -17,7 +16,14 @@ import {
 
 /* =========================================
    INLOVENAILZ BY BRIANA
-   SERVICES PAGE
+   LUXURY MARBLE SERVICES PAGE
+
+   - Option 3: Luxury Spa Menu
+   - Two-column layout for wider service cards
+   - Compatible with marble.png ServiceCard
+   - Category filters preserved
+   - Service data and booking preserved
+   - Responsive desktop and mobile layout
 ========================================= */
 
 const CATEGORY_ORDER = [
@@ -175,7 +181,10 @@ const Services: React.FC = () => {
               tracking-tight text-white
             "
           >
-            Nail Services
+            Nail{' '}
+            <span className="italic text-[#F7DDE4]">
+              Services.
+            </span>
           </h1>
 
           {/* DESCRIPTION */}
@@ -188,71 +197,9 @@ const Services: React.FC = () => {
               sm:text-base
             "
           >
-            Choose from our selection of premium nail services, customized to fit your style.
+            Choose from our selection of premium nail
+            services, customized to fit your style.
           </p>
-
-          {/* HERO FEATURES */}
-
-          <div
-            className="
-              mt-8 flex flex-wrap
-              items-center justify-center
-              gap-x-6 gap-y-4
-              sm:gap-x-8
-            "
-          >
-            <div className="flex items-center gap-2">
-              <Gem
-                size={20}
-                strokeWidth={1.5}
-                aria-hidden="true"
-              />
-
-              <span className="text-xs sm:text-sm">
-                Custom Designs
-              </span>
-            </div>
-
-            <span
-              className="
-                hidden h-5 w-px
-                bg-white/40 sm:block
-              "
-              aria-hidden="true"
-            />
-
-            <div className="flex items-center gap-2">
-              <Heart
-                size={20}
-                strokeWidth={1.5}
-                aria-hidden="true"
-              />
-
-              <span className="text-xs sm:text-sm">
-                Quality Care
-              </span>
-            </div>
-
-            <span
-              className="
-                hidden h-5 w-px
-                bg-white/40 sm:block
-              "
-              aria-hidden="true"
-            />
-
-            <div className="flex items-center gap-2">
-              <CalendarDays
-                size={20}
-                strokeWidth={1.5}
-                aria-hidden="true"
-              />
-
-              <span className="text-xs sm:text-sm">
-                Easy Booking
-              </span>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -280,7 +227,7 @@ const Services: React.FC = () => {
           {!isLoading && !isError && (
             <div
               className="
-                mb-9 flex flex-wrap
+                mb-10 flex flex-wrap
                 items-center justify-center
                 gap-2.5
               "
@@ -400,6 +347,7 @@ const Services: React.FC = () => {
                   px-7 py-3
                   text-sm font-semibold
                   text-white
+                  transition-colors duration-200
                   hover:bg-[#7D3250]
                 "
               >
@@ -409,7 +357,11 @@ const Services: React.FC = () => {
           )}
 
           {/* =====================================
-              SERVICES GRID
+              LUXURY MARBLE SERVICE GRID
+
+              - One column on mobile/tablets
+              - Two columns on extra-large screens
+              - Wider cards for horizontal layout
           ===================================== */}
 
           {!isLoading &&
@@ -418,9 +370,10 @@ const Services: React.FC = () => {
               <div
                 className="
                   grid grid-cols-1
-                  items-stretch gap-6
-                  sm:grid-cols-2
-                  lg:grid-cols-3
+                  items-stretch
+                  gap-6
+                  xl:grid-cols-2
+                  xl:gap-7
                 "
               >
                 {filteredServices.map(service => (
@@ -479,6 +432,7 @@ const Services: React.FC = () => {
                     px-7 py-3
                     text-sm font-semibold
                     text-white
+                    transition-colors duration-200
                     hover:bg-[#7D3250]
                   "
                 >
@@ -596,7 +550,9 @@ const Services: React.FC = () => {
                   text-white
                   shadow-md
                   transition-all duration-200
+                  hover:-translate-y-0.5
                   hover:bg-[#7D3250]
+                  hover:shadow-lg
                   sm:w-auto
                 "
               >

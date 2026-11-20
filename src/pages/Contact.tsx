@@ -1,89 +1,241 @@
+
 import React, { useState } from 'react';
-import { Mail, Send } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import {
+  ArrowRight,
+  CalendarDays,
+  CheckCircle2,
+  Heart,
+  Mail,
+  MapPin,
+  Send,
+  Sparkles,
+} from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Card } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+
+/* =========================================
+   INLOVENAILZ — CONTACT PAGE
+
+   LUXURY WITH A POP OF PINK
+
+   PRESERVED:
+   - Existing contact form fields
+   - /api/contact endpoint
+   - Email notification
+   - Toast notifications
+   - Submission loading state
+   - Form reset after success
+========================================= */
 
 const Contact = () => {
   const { toast } = useToast();
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     phone: '',
-    message: ''
+    message: '',
   });
+
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  /* =========================================
+     FORM SUBMISSION
+  ========================================= */
+
+  const handleSubmit = async (
+    e: React.FormEvent<HTMLFormElement>
+  ) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
       console.log('Contact form submitted:', formData);
 
-      // Create contact email HTML
+      const escapeHtml = (value: string) =>
+        value
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+
+      const safeName = escapeHtml(formData.name);
+      const safeEmail = escapeHtml(formData.email);
+      const safePhone = escapeHtml(formData.phone);
+      const safeMessage = escapeHtml(formData.message)
+        .replace(/\r?\n/g, '<br>');
+
+      /* =====================================
+         CONTACT EMAIL HTML
+      ===================================== */
+
       const contactEmailHtml = `
         <!DOCTYPE html>
         <html>
         <head>
+          <meta charset="UTF-8" />
           <style>
-            body { font-family: 'Cormorant Garamond', serif; background-color: #FFE9EF; margin: 0; padding: 20px; }
-            .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-            .header { background: linear-gradient(135deg, #FFBCCD, #FFC9D7); padding: 40px 20px; text-align: center; }
-            .header h1 { color: #333; margin: 0; font-size: 32px; }
-            .content { padding: 30px; color: #333; }
-            .footer { background: #FFE9EF; padding: 20px; text-align: center; color: #666; font-size: 14px; }
+            body {
+              font-family: Arial, sans-serif;
+              background-color: #FFF7F8;
+              margin: 0;
+              padding: 24px;
+            }
+
+            .container {
+              max-width: 600px;
+              margin: 0 auto;
+              background: #FFFFFF;
+              border-radius: 16px;
+              overflow: hidden;
+              border: 1px solid #F7DDE4;
+            }
+
+            .header {
+              background: #963F60;
+              padding: 36px 24px;
+              text-align: center;
+            }
+
+            .header h1 {
+              color: #FFFFFF;
+              margin: 0;
+              font-size: 28px;
+              font-weight: 500;
+            }
+
+            .content {
+              padding: 32px;
+              color: #29252B;
+            }
+
+            .content h2 {
+              color: #963F60;
+              margin-top: 0;
+            }
+
+            .message {
+              background: #FFF7F8;
+              padding: 20px;
+              border-radius: 10px;
+              border-left: 3px solid #C9809B;
+              line-height: 1.7;
+              overflow-wrap: anywhere;
+            }
+
+            .footer {
+              background: #F7DDE4;
+              padding: 20px;
+              text-align: center;
+              color: #70636A;
+              font-size: 13px;
+            }
+
+            a {
+              color: #963F60;
+            }
           </style>
         </head>
+
         <body>
           <div class="container">
+
             <div class="header">
-              <h1>💌 New Contact Message</h1>
+              <h1>New Contact Message</h1>
             </div>
+
             <div class="content">
-              <h2 style="color: #FF8CAA; margin-top: 0;">Contact Details</h2>
-              <p><strong>Name:</strong> ${formData.name}</p>
-              <p><strong>Email:</strong> ${formData.email}</p>
-              ${formData.phone ? `<p><strong>Phone:</strong> ${formData.phone}</p>` : ''}
-              
-              <h3 style="color: #FF8CAA;">Message:</h3>
-              <div style="background: #FFE9EF; padding: 20px; border-radius: 8px; border-left: 4px solid #FF8CAA;">
-                <p style="margin: 0;">${formData.message.replace(/\n/g, '<br>')}</p>
+              <h2>Contact Details</h2>
+
+              <p>
+                <strong>Name:</strong>
+                ${safeName}
+              </p>
+
+              <p>
+                <strong>Email:</strong>
+                ${safeEmail}
+              </p>
+
+              ${
+                formData.phone
+                  ? `
+                    <p>
+                      <strong>Phone:</strong>
+                      ${safePhone}
+                    </p>
+                  `
+                  : ''
+              }
+
+              <h3 style="color:#963F60;">
+                Message
+              </h3>
+
+              <div class="message">
+                ${safeMessage}
               </div>
-              
-              <p style="margin-top: 20px;">
-                <strong>Reply to:</strong> 
-                <a href="mailto:${formData.email}?subject=Re: Your message to InLoveNailz" style="color: #FF8CAA;">${formData.email}</a>
+
+              <p style="margin-top:24px;">
+                <strong>Reply to:</strong>
+                <a href="mailto:${encodeURIComponent(formData.email)}?subject=Re%3A%20Your%20message%20to%20InLoveNailz">
+                  ${safeEmail}
+                </a>
               </p>
             </div>
+
             <div class="footer">
-              <p>This message was sent from the InLoveNailz contact form</p>
-              <p>📧 <a href="https://inlovenailz.com" style="color: #FF8CAA;">inlovenailz.com</a></p>
+              <p>
+                Sent from the InLoveNailz contact form
+              </p>
+
+              <p>
+                <a href="https://www.inlovenailz.com">
+                  www.inlovenailz.com
+                </a>
+              </p>
             </div>
+
           </div>
         </body>
         </html>
       `;
 
+      /* =====================================
+         SEND CONTACT EMAIL
+      ===================================== */
+
       const response = await fetch('/api/contact', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           to: 'brianalehota@gmail.com',
           subject: `💌 New Contact Message from ${formData.name}`,
-          html: contactEmailHtml
-        })
+          html: contactEmailHtml,
+        }),
       });
+
       if (!response.ok) {
-        console.error('Failed to send contact email:', await response.text());
+        console.error(
+          'Failed to send contact email:',
+          await response.text()
+        );
+
         toast({
           title: 'Error sending message',
-          description: 'There was a problem sending your message. Please try again or contact us directly.',
-          variant: 'destructive'
+          description:
+            'There was a problem sending your message. Please try again or contact us directly.',
+          variant: 'destructive',
         });
+
         return;
       }
 
@@ -91,108 +243,603 @@ const Contact = () => {
 
       toast({
         title: 'Message sent!',
-        description: "We'll get back to you as soon as possible.",
+        description:
+          "We'll get back to you as soon as possible.",
       });
 
-      setFormData({ name: '', email: '', phone: '', message: '' });
+      setFormData({
+        name: '',
+        email: '',
+        phone: '',
+        message: '',
+      });
     } catch (error) {
-      console.error('Contact form submission error:', error);
+      console.error(
+        'Contact form submission error:',
+        error
+      );
+
       toast({
         title: 'Error sending message',
-        description: 'There was a problem sending your message. Please try again or contact us directly.',
-        variant: 'destructive'
+        description:
+          'There was a problem sending your message. Please try again or contact us directly.',
+        variant: 'destructive',
       });
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  /* =========================================
+     INPUT STYLING
+  ========================================= */
+
+  const inputClassName = `
+    mt-2
+    h-[48px]
+    rounded-[8px]
+    border border-[#E8D8DE]
+    bg-[#FFFDFD]
+    px-4
+    text-[13px]
+    text-[#29252B]
+    placeholder:text-[#A79AA1]
+    shadow-none
+    transition-all duration-200
+    hover:border-[#D6A6B8]
+    focus-visible:border-[#C9809B]
+    focus-visible:ring-2
+    focus-visible:ring-[#F7DDE4]
+    focus-visible:ring-offset-0
+  `;
+
+  const labelClassName = `
+    text-[11px]
+    font-semibold
+    tracking-[0.03em]
+    text-[#51424A]
+  `;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#FFE9EF] via-[#FFC9D7] to-[#FFBCCD]">
-      <div className="container mx-auto px-4 py-12">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 text-gray-800">
-            Get In Touch
+    <main className="min-h-screen overflow-hidden bg-[#FFF7F8] text-[#29252B]">
+      {/* =====================================
+          PAGE HEADER
+      ===================================== */}
+
+      <section className="relative overflow-hidden bg-[#FFF9FA] px-5 pb-10 pt-12 text-center sm:pt-16">
+        <div
+          className="pointer-events-none absolute -right-24 -top-28 h-[350px] w-[350px] rounded-full bg-[#F7DDE4]/50 blur-[90px]"
+          aria-hidden="true"
+        />
+
+        <div className="relative mx-auto max-w-[720px]">
+          <div className="flex items-center justify-center gap-3">
+            <span className="h-px w-9 bg-[#DFA2B5]" />
+
+            <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-[#963F60]">
+              We'd Love to Hear From You
+            </p>
+
+            <span className="h-px w-9 bg-[#DFA2B5]" />
+          </div>
+
+          <h1 className="mt-5 font-serif text-[clamp(2.8rem,5vw,4.5rem)] font-normal leading-[1.05] tracking-[-0.035em]">
+            Let's Get in{' '}
+            <span className="italic text-[#963F60]">
+              Touch.
+            </span>
           </h1>
-          <p className="text-gray-700 text-lg max-w-2xl mx-auto">
-            Have questions? I'd love to hear from you. Send me a message and I'll respond as soon as possible.
+
+          <p className="mx-auto mt-5 max-w-[520px] text-[13px] leading-[1.9] text-[#766D73] sm:text-[14px]">
+            Questions about services, nail designs,
+            or your next appointment? I'd love to
+            hear from you.
           </p>
         </div>
+      </section>
 
-        <div className="max-w-2xl mx-auto">
-          <Card className="p-8">
-            <h2 className="text-2xl font-bold mb-6 text-gray-800">Send me a Message</h2>
-            
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <Label htmlFor="name">Your Name *</Label>
-                  <Input
-                    id="name"
-                    required
-                    value={formData.name}
-                    onChange={e => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Jane Smith"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="email">Email Address *</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    required
-                    value={formData.email}
-                    onChange={e => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="jane@example.com"
-                    className="mt-1"
-                  />
-                </div>
-              </div>
+      {/* =====================================
+          MAIN CONTACT SECTION
+      ===================================== */}
 
-              <div>
-                <Label htmlFor="phone">Phone Number</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  value={formData.phone}
-                  onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="(555) 123-4567"
-                  className="mt-1"
+      <section className="relative px-5 pb-20 pt-4 sm:px-8 lg:pb-24">
+        <div className="mx-auto grid max-w-[1120px] grid-cols-1 items-start gap-9 lg:grid-cols-[0.85fr_1.15fr] lg:gap-12">
+          {/* =================================
+              LEFT — CONTACT INTRO
+          ================================= */}
+
+          <div className="space-y-6">
+            {/* BERRY ACCENT PANEL */}
+
+            <div className="relative isolate overflow-hidden rounded-[22px] bg-[#74334E] px-7 py-9 text-white shadow-[0_16px_45px_rgba(112,43,68,0.15)] sm:px-9 sm:py-10">
+              {/* BACKGROUND GLOW */}
+
+              <div
+                className="pointer-events-none absolute -right-16 -top-16 -z-10 h-[260px] w-[260px] rounded-full bg-[#F8B4CE]/25 blur-[60px]"
+                aria-hidden="true"
+              />
+
+              {/* NEON HEART — SPARKLE REMOVED */}
+
+              <div className="relative mb-7 flex h-[85px] w-[85px] items-center justify-center">
+                <Heart
+                  size={65}
+                  strokeWidth={1.35}
+                  className="contact-neon-heart text-[#FFD5E4]"
+                  aria-hidden="true"
                 />
               </div>
 
-              <div>
-                <Label htmlFor="message">Your Message *</Label>
-                <Textarea
-                  id="message"
-                  required
-                  value={formData.message}
-                  onChange={e => setFormData({ ...formData, message: e.target.value })}
-                  placeholder="Tell me how I can help you..."
-                  className="mt-1"
-                  rows={6}
-                />
+              <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-[#FFD1E1]">
+                A Little Love Note
+              </p>
+
+              <h2 className="mt-4 font-serif text-[clamp(2rem,3vw,2.8rem)] font-normal leading-[1.15]">
+                Let's Talk{' '}
+                <span className="italic text-[#FFC4DA]">
+                  Nails.
+                </span>
+              </h2>
+
+              <p className="mt-5 max-w-[370px] text-[13px] leading-[1.9] text-[#FBE7EE]">
+                Whether you have a question, a
+                creative nail idea, or just need
+                a little guidance before booking,
+                I'm happy to help.
+              </p>
+
+              <p className="mt-6 font-serif text-[19px] italic text-[#FFD1E1]">
+                With love, Briana ♡
+              </p>
+            </div>
+
+            {/* CONTACT INFORMATION */}
+
+            <div className="rounded-[18px] border border-[#E9CCD6] bg-white px-6 py-7 shadow-[0_8px_28px_rgba(112,43,68,0.05)] sm:px-7">
+              <div className="mb-6 flex items-center gap-3">
+                <span className="h-px w-7 bg-[#C9809B]" />
+
+                <h3 className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#963F60]">
+                  Contact Details
+                </h3>
               </div>
 
-                            <Button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full bg-[#FF8CAA] hover:bg-[#FF6B96] text-white font-semibold shadow-lg hover:shadow-xl transition-all"
-                size="lg"
-              >
-                {isSubmitting ? 'Sending...' : (
-                  <>
-                    <Send className="mr-2" size={20} />
-                    Send Message
-                  </>
-                )}
-              </Button>
-            </form>
-          </Card>
+              <div className="space-y-6">
+                {/* EMAIL */}
+
+                <div className="flex items-start gap-4">
+                  <div className="flex h-[43px] w-[43px] shrink-0 items-center justify-center rounded-[12px] bg-[#F7DDE4]/70 text-[#963F60]">
+                    <Mail size={19} strokeWidth={1.6} />
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#963F60]">
+                      Email
+                    </p>
+
+                    <a
+                      href="mailto:brianalehota@gmail.com"
+                      className="mt-1 inline-block break-all text-[13px] text-[#51424A] transition-colors hover:text-[#963F60]"
+                    >
+                      brianalehota@gmail.com
+                    </a>
+                  </div>
+                </div>
+
+                {/* LOCATION */}
+
+                <div className="flex items-start gap-4">
+                  <div className="flex h-[43px] w-[43px] shrink-0 items-center justify-center rounded-[12px] bg-[#F7DDE4]/70 text-[#963F60]">
+                    <MapPin size={19} strokeWidth={1.6} />
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#963F60]">
+                      Based In
+                    </p>
+
+                    <p className="mt-1 text-[13px] text-[#51424A]">
+                      Cleveland, Ohio
+                    </p>
+                  </div>
+                </div>
+
+                {/* BOOKING */}
+
+                <div className="flex items-start gap-4">
+                  <div className="flex h-[43px] w-[43px] shrink-0 items-center justify-center rounded-[12px] bg-[#F7DDE4]/70 text-[#963F60]">
+                    <CalendarDays size={19} strokeWidth={1.6} />
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#963F60]">
+                      Appointments
+                    </p>
+
+                    <Link
+                      to="/book"
+                      className="mt-1 inline-flex items-center gap-2 text-[13px] font-medium text-[#963F60] transition-colors hover:text-[#79324F]"
+                    >
+                      Request an Appointment
+                      <ArrowRight size={14} />
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* NOTE */}
+
+            <div className="rounded-[14px] border border-[#EACDD7] bg-[#F7DDE4]/45 px-5 py-5">
+              <div className="flex items-center gap-2">
+                <Sparkles
+                  size={16}
+                  className="text-[#963F60]"
+                />
+
+                <p className="text-[11px] font-semibold text-[#963F60]">
+                  Before You Book
+                </p>
+              </div>
+
+              <p className="mt-2 text-[12px] leading-[1.8] text-[#766D73]">
+                For appointment requests, please
+                use the booking page so all your
+                service details can be included.
+              </p>
+            </div>
+          </div>
+
+          {/* =================================
+              RIGHT — CONTACT FORM
+          ================================= */}
+
+          <div className="relative isolate rounded-[22px] bg-white p-[10px] shadow-[0_18px_55px_rgba(112,43,68,0.1)]">
+            {/* ILLUMINATED BORDER */}
+
+            <div
+              className="contact-neon-border pointer-events-none absolute inset-[6px] z-10 rounded-[18px] border-[2px] border-[#FFEAF2]"
+              aria-hidden="true"
+            />
+
+            <div className="relative z-20 overflow-hidden rounded-[14px] bg-white">
+              {/* BLUSH FORM HEADER */}
+
+              <div className="relative overflow-hidden bg-[#F7DDE4] px-6 py-8 sm:px-9">
+                <div
+                  className="pointer-events-none absolute -right-10 -top-12 h-[180px] w-[180px] rounded-full bg-white/45 blur-[40px]"
+                  aria-hidden="true"
+                />
+
+                <div className="relative">
+                  <div className="flex items-center gap-3">
+                    <span className="h-px w-8 bg-[#963F60]" />
+
+                    <p className="text-[9px] font-semibold uppercase tracking-[0.24em] text-[#963F60]">
+                      Send a Love Note
+                    </p>
+                  </div>
+
+                  <h2 className="mt-4 font-serif text-[clamp(2rem,3vw,2.8rem)] font-normal leading-tight">
+                    Send Me a{' '}
+                    <span className="italic text-[#963F60]">
+                      Message.
+                    </span>
+                  </h2>
+
+                  <p className="mt-3 max-w-[400px] text-[12px] leading-[1.8] text-[#765B67]">
+                    Have something on your mind?
+                    Fill out the form below and
+                    I'll be in touch as soon as possible.
+                  </p>
+                </div>
+              </div>
+
+              {/* FORM BODY */}
+
+              <div className="px-5 py-8 sm:px-9 sm:py-9">
+                <form
+                  onSubmit={handleSubmit}
+                  className="space-y-6"
+                >
+                  {/* NAME + EMAIL */}
+
+                  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                    {/* NAME */}
+
+                    <div>
+                      <Label
+                        htmlFor="name"
+                        className={labelClassName}
+                      >
+                        Your Name
+                        <span className="ml-1 text-[#C9809B]">
+                          *
+                        </span>
+                      </Label>
+
+                      <Input
+                        id="name"
+                        name="name"
+                        type="text"
+                        autoComplete="name"
+                        required
+                        maxLength={120}
+                        value={formData.name}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            name: e.target.value,
+                          })
+                        }
+                        placeholder="Jane Smith"
+                        className={inputClassName}
+                      />
+                    </div>
+
+                    {/* EMAIL */}
+
+                    <div>
+                      <Label
+                        htmlFor="email"
+                        className={labelClassName}
+                      >
+                        Email Address
+                        <span className="ml-1 text-[#C9809B]">
+                          *
+                        </span>
+                      </Label>
+
+                      <Input
+                        id="email"
+                        name="email"
+                        type="email"
+                        autoComplete="email"
+                        required
+                        maxLength={254}
+                        value={formData.email}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            email: e.target.value,
+                          })
+                        }
+                        placeholder="jane@example.com"
+                        className={inputClassName}
+                      />
+                    </div>
+                  </div>
+
+                  {/* PHONE */}
+
+                  <div>
+                    <Label
+                      htmlFor="phone"
+                      className={labelClassName}
+                    >
+                      Phone Number
+
+                      <span className="ml-2 text-[10px] font-normal text-[#A79AA1]">
+                        Optional
+                      </span>
+                    </Label>
+
+                    <Input
+                      id="phone"
+                      name="phone"
+                      type="tel"
+                      autoComplete="tel"
+                      maxLength={40}
+                      value={formData.phone}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          phone: e.target.value,
+                        })
+                      }
+                      placeholder="(555) 123-4567"
+                      className={inputClassName}
+                    />
+                  </div>
+
+                  {/* MESSAGE */}
+
+                  <div>
+                    <Label
+                      htmlFor="message"
+                      className={labelClassName}
+                    >
+                      Your Message
+                      <span className="ml-1 text-[#C9809B]">
+                        *
+                      </span>
+                    </Label>
+
+                    <Textarea
+                      id="message"
+                      name="message"
+                      required
+                      maxLength={5000}
+                      value={formData.message}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          message: e.target.value,
+                        })
+                      }
+                      placeholder="Tell me how I can help you..."
+                      rows={6}
+                      className="mt-2 min-h-[150px] resize-y rounded-[8px] border border-[#E8D8DE] bg-[#FFFDFD] px-4 py-3 text-[13px] leading-[1.8] text-[#29252B] placeholder:text-[#A79AA1] shadow-none transition-all duration-200 hover:border-[#D6A6B8] focus-visible:border-[#C9809B] focus-visible:ring-2 focus-visible:ring-[#F7DDE4] focus-visible:ring-offset-0"
+                    />
+
+                    <p className="mt-2 text-right text-[10px] text-[#A79AA1]">
+                      {formData.message.length}/5000
+                    </p>
+                  </div>
+
+                  {/* SUBMIT */}
+
+                  <Button
+                    type="submit"
+                    disabled={isSubmitting}
+                    size="lg"
+                    className="group flex h-[50px] w-full items-center justify-center gap-3 rounded-[8px] bg-[#963F60] px-6 text-[12px] font-semibold tracking-[0.04em] text-white shadow-[0_8px_20px_rgba(150,63,96,0.18)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#79324F] hover:shadow-[0_12px_28px_rgba(150,63,96,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <span
+                          className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
+                          aria-hidden="true"
+                        />
+
+                        Sending Your Message...
+                      </>
+                    ) : (
+                      <>
+                        <Send size={16} />
+
+                        Send Message
+
+                        <ArrowRight
+                          size={15}
+                          className="transition-transform group-hover:translate-x-1"
+                        />
+                      </>
+                    )}
+                  </Button>
+
+                  {/* REASSURANCE */}
+
+                  <div className="flex items-center justify-center gap-2 pt-1">
+                    <CheckCircle2
+                      size={14}
+                      className="shrink-0 text-[#C9809B]"
+                    />
+
+                    <p className="text-center text-[10px] leading-relaxed text-[#94858D]">
+                      Your message will be sent
+                      directly to InLoveNailz.
+                    </p>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      </section>
+
+      {/* =====================================
+          BOOKING CALLOUT
+      ===================================== */}
+
+      <section className="border-t border-[#E9CCD6] bg-[#F7DDE4]/65 px-5 py-12 text-center">
+        <div className="mx-auto max-w-[650px]">
+          <div className="mb-3 flex items-center justify-center gap-2">
+            <Heart
+              size={15}
+              className="text-[#963F60]"
+            />
+
+            <p className="text-[9px] font-semibold uppercase tracking-[0.25em] text-[#963F60]">
+              Your Next Set Awaits
+            </p>
+          </div>
+
+          <h2 className="font-serif text-[clamp(2rem,3vw,2.8rem)] font-normal">
+            Ready for Something{' '}
+            <span className="italic text-[#963F60]">
+              Beautiful?
+            </span>
+          </h2>
+
+          <p className="mx-auto mt-3 max-w-[430px] text-[12px] leading-[1.8] text-[#766D73]">
+            Ready to turn your nail inspiration
+            into your next appointment?
+          </p>
+
+          <Link
+            to="/book"
+            className="mt-6 inline-flex min-h-[44px] items-center justify-center gap-3 rounded-[8px] bg-[#963F60] px-7 py-3 text-[11px] font-semibold text-white transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#79324F] hover:shadow-[0_10px_25px_rgba(150,63,96,0.25)]"
+          >
+            Book an Appointment
+
+            <ArrowRight size={15} />
+          </Link>
+        </div>
+      </section>
+
+      {/* =====================================
+          NEON ANIMATIONS
+      ===================================== */}
+
+      <style>
+        {`
+          @keyframes contactNeonIlluminate {
+            0%, 100% {
+              border-color: #FFEAF2;
+              box-shadow:
+                0 0 5px rgba(255,255,255,0.95),
+                0 0 12px rgba(255,153,190,0.4),
+                0 0 22px rgba(255,153,190,0.16),
+                inset 0 0 10px rgba(255,153,190,0.08);
+            }
+
+            50% {
+              border-color: #FFFFFF;
+              box-shadow:
+                0 0 8px rgba(255,255,255,1),
+                0 0 18px rgba(255,133,181,0.7),
+                0 0 36px rgba(255,105,165,0.3),
+                inset 0 0 18px rgba(255,153,190,0.16);
+            }
+          }
+
+          @keyframes contactHeartGlow {
+            0%, 100% {
+              filter:
+                drop-shadow(0 0 4px rgba(255,210,228,0.65))
+                drop-shadow(0 0 10px rgba(255,137,185,0.35));
+            }
+
+            50% {
+              filter:
+                drop-shadow(0 0 7px rgba(255,230,239,1))
+                drop-shadow(0 0 18px rgba(255,137,185,0.8))
+                drop-shadow(0 0 28px rgba(255,105,165,0.4));
+            }
+          }
+
+          .contact-neon-border {
+            animation:
+              contactNeonIlluminate 4.5s ease-in-out infinite;
+          }
+
+          .contact-neon-heart {
+            animation:
+              contactHeartGlow 4s ease-in-out infinite;
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            .contact-neon-border,
+            .contact-neon-heart {
+              animation: none;
+            }
+
+            .contact-neon-border {
+              border-color: #FFEAF2;
+              box-shadow:
+                0 0 6px rgba(255,255,255,0.95),
+                0 0 16px rgba(255,133,181,0.5);
+            }
+
+            .contact-neon-heart {
+              filter:
+                drop-shadow(0 0 7px rgba(255,210,228,0.7));
+            }
+          }
+        `}
+      </style>
+    </main>
   );
 };
 

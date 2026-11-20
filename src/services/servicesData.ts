@@ -5,7 +5,7 @@ const STORAGE_KEY = 'nail_salon_services';
 const CATALOG_VERSION_KEY = 'nail_salon_catalog_version';
 
 // Updated version so existing browsers receive the new photo paths.
-const CATALOG_VERSION = 'briana-services-v2';
+const CATALOG_VERSION = 'briana-services-v4';
 
 export const BOOKING_DEPOSIT = 20;
 
@@ -117,7 +117,8 @@ const DEFAULT_SERVICES: Service[] = [
     'For existing acrylic sets with up to 3 weeks of nail growth.',
     70,
     60,
-    'Acrylic Fills'
+    'Acrylic Fills',
+    '/services/IMG_9.png'
   ),
 
   makeService(
@@ -126,7 +127,8 @@ const DEFAULT_SERVICES: Service[] = [
     'Maintenance fill for an existing acrylic overlay.',
     60,
     60,
-    'Acrylic Fills'
+    'Acrylic Fills',
+    '/services/IMG_10.png'
   ),
 
   makeService(
@@ -135,7 +137,8 @@ const DEFAULT_SERVICES: Service[] = [
     'Acrylic overlay maintenance with minimal nail designs.',
     65,
     90,
-    'Acrylic Fills'
+    'Acrylic Fills',
+    '/services/IMG_11.png'
   ),
 
   // ==========================================
@@ -148,7 +151,8 @@ const DEFAULT_SERVICES: Service[] = [
     'Removal of existing nail enhancements.',
     20,
     30,
-    'Nail Add-Ons'
+    'Nail Add-Ons',
+    '/services/IMG_12.png'
   ),
 
   makeService(
@@ -157,7 +161,8 @@ const DEFAULT_SERVICES: Service[] = [
     'Add stiletto, almond, or duck nail shapes to your set.',
     6,
     10,
-    'Nail Add-Ons'
+    'Nail Add-Ons',
+    '/services/IMG_13.png'
   ),
 
   makeService(
@@ -166,7 +171,8 @@ const DEFAULT_SERVICES: Service[] = [
     'Classic French-tip design add-on.',
     10,
     10,
-    'Nail Add-Ons'
+    'Nail Add-Ons',
+    '/services/IMG_14.png'
   ),
 
   makeService(
@@ -175,7 +181,8 @@ const DEFAULT_SERVICES: Service[] = [
     'French tips with added bling. Pricing ranges from $20–$30 depending on nail length.',
     20,
     30,
-    'Nail Add-Ons'
+    'Nail Add-Ons',
+    '/services/IMG_15.png'
   ),
 
   makeService(
@@ -184,7 +191,8 @@ const DEFAULT_SERVICES: Service[] = [
     'Starting at $6, up to $10 depending on nail length and design. Repairs within 3 days of the original appointment are complimentary.',
     6,
     10,
-    'Nail Add-Ons'
+    'Nail Add-Ons',
+    '/services/IMG_16.png'
   ),
 
   // ==========================================
@@ -197,7 +205,8 @@ const DEFAULT_SERVICES: Service[] = [
     'Pedicure service finished with gel polish.',
     75,
     50,
-    'Pedicures & Toes'
+    'Pedicures & Toes',
+    '/services/IMG_17.png'
   ),
 
   makeService(
@@ -206,7 +215,8 @@ const DEFAULT_SERVICES: Service[] = [
     'Includes gel polish removal, nail clipping, filing, and buffing.',
     35,
     30,
-    'Pedicures & Toes'
+    'Pedicures & Toes',
+    '/services/IMG_18.png'
   ),
 
   makeService(
@@ -215,7 +225,8 @@ const DEFAULT_SERVICES: Service[] = [
     'Acrylic enhancements for the big toenails.',
     20,
     15,
-    'Pedicures & Toes'
+    'Pedicures & Toes',
+    '/services/IMG_19.png'
   ),
 
   makeService(
@@ -224,7 +235,8 @@ const DEFAULT_SERVICES: Service[] = [
     'Maintenance fill for acrylic big toes.',
     15,
     10,
-    'Pedicures & Toes'
+    'Pedicures & Toes',
+    '/services/IMG_20.png'
   ),
 
   makeService(
@@ -233,7 +245,8 @@ const DEFAULT_SERVICES: Service[] = [
     'Full acrylic toenail set. Does not include a wet pedicure; book that separately if needed.',
     80,
     60,
-    'Pedicures & Toes'
+    'Pedicures & Toes',
+    '/services/IMG_21.png'
   ),
 
   makeService(
@@ -242,7 +255,8 @@ const DEFAULT_SERVICES: Service[] = [
     'Maintenance fill for a full set of acrylic toenails.',
     60,
     60,
-    'Pedicures & Toes'
+    'Pedicures & Toes',
+    '/services/IMG_22.png'
   ),
 
   makeService(
@@ -251,7 +265,8 @@ const DEFAULT_SERVICES: Service[] = [
     'Acrylic toenail full set with freestyle designs.',
     90,
     90,
-    'Pedicures & Toes'
+    'Pedicures & Toes',
+    '/services/IMG_23.png'
   ),
 
   makeService(
@@ -260,7 +275,8 @@ const DEFAULT_SERVICES: Service[] = [
     'French-tip design add-on for big toes.',
     5,
     5,
-    'Pedicures & Toes'
+    'Pedicures & Toes',
+    '/services/IMG_24.png'
   ),
 
   // ==========================================
@@ -273,7 +289,8 @@ const DEFAULT_SERVICES: Service[] = [
     'Manicure for children ages 12 and under.',
     35,
     30,
-    'Kids Services'
+    'Kids Services',
+    '/services/IMG_25.png'
   ),
 
   makeService(
@@ -282,7 +299,8 @@ const DEFAULT_SERVICES: Service[] = [
     'Pedicure for children ages 12 and under.',
     50,
     40,
-    'Kids Services'
+    'Kids Services',
+    '/services/IMG_27.png'
   ),
 
   makeService(
@@ -291,7 +309,8 @@ const DEFAULT_SERVICES: Service[] = [
     'Toenail polish change for children ages 12 and under.',
     30,
     20,
-    'Kids Services'
+    'Kids Services',
+    '/services/IMG_27.png'
   ),
 
   // ==========================================
@@ -304,7 +323,8 @@ const DEFAULT_SERVICES: Service[] = [
     'Includes a complimentary sugar scrub, hot towel, hand massage, and optional gel top coat.',
     40,
     40,
-    "Men's Services"
+    "Men's Services",
+    '/services/IMG_28.png'
   ),
 
   makeService(
@@ -313,7 +333,8 @@ const DEFAULT_SERVICES: Service[] = [
     'Pedicure service for men.',
     65,
     45,
-    "Men's Services"
+    "Men's Services",
+    '/services/IMG_30.png'
   ),
 
   makeService(
@@ -322,7 +343,8 @@ const DEFAULT_SERVICES: Service[] = [
     'Gel manicure with minimal nail designs.',
     55,
     60,
-    "Men's Services"
+    "Men's Services",
+    '/services/IMG_29.png'
   ),
 ];
 
@@ -379,9 +401,8 @@ const loadServices = (): Service[] => {
         )
     );
 
-    // Refresh the official catalog with the correct
-    // IMG_1.png through IMG_7.png image paths.
-    // Preserve separately created custom services.
+    // Refresh the official catalog with updated
+    // photo paths, while preserving custom services.
     const migrated = [
       ...DEFAULT_SERVICES,
       ...customServices,

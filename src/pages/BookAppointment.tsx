@@ -1475,10 +1475,19 @@ const BookAppointment: React.FC = () => {
                     text-white
                     shadow-lg
                     shadow-[#963F60]/20
-                    transition-all
-                    hover:bg-[#7D3250]
+                    transition-all duration-300 ease-out
+                    hover:-translate-y-1
+                    hover:bg-[#69263F]
+                    hover:shadow-[0_12px_28px_rgba(150,63,96,0.40)]
+                    focus-visible:outline-none
+                    focus-visible:ring-2
+                    focus-visible:ring-[#963F60]
+                    focus-visible:ring-offset-2
                     disabled:cursor-not-allowed
                     disabled:opacity-60
+                    disabled:hover:translate-y-0
+                    disabled:hover:bg-[#963F60]
+                    disabled:hover:shadow-lg
                   "
                 >
                   {isSubmitting ? (

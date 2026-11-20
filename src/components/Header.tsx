@@ -1,6 +1,7 @@
+
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ShoppingBag, Instagram, Menu, X, ArrowUpRight } from 'lucide-react';
+import { ShoppingBag, Instagram, Menu, X } from 'lucide-react';
 
 import { useCart } from '@/contexts/CartContext';
 import { Badge } from '@/components/ui/badge';
@@ -12,8 +13,7 @@ import { Badge } from '@/components/ui/badge';
 const navItems = [
   { label: 'Home', path: '/' },
   { label: 'Services', path: '/services' },
-  { label: 'Gallery', path: '/' },
-  { label: 'About', path: '/' },
+  { label: 'Contact', path: '/contact' },
 ] as const;
 
 const Header = () => {
@@ -24,10 +24,6 @@ const Header = () => {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const mobileNavRef = useRef<HTMLElement>(null);
-
-  /* =========================================
-     ACTIVE NAVIGATION STATE
-  ========================================= */
 
   const isActive = (path: string, label: string) => {
     if (path === '/') {
@@ -40,17 +36,9 @@ const Header = () => {
     );
   };
 
-  /* =========================================
-     CLOSE MOBILE MENU ON ROUTE CHANGE
-  ========================================= */
-
   useEffect(() => {
     setMenuOpen(false);
   }, [location.pathname]);
-
-  /* =========================================
-     ESCAPE KEY SUPPORT
-  ========================================= */
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -63,16 +51,15 @@ const Header = () => {
     };
 
     window.addEventListener('keydown', handleKeyDown);
+
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [menuOpen]);
 
-  /* =========================================
-     MOBILE MENU FOCUS
-  ========================================= */
-
   useEffect(() => {
     if (menuOpen) {
-      mobileNavRef.current?.querySelector<HTMLAnchorElement>('a')?.focus();
+      mobileNavRef.current
+        ?.querySelector<HTMLAnchorElement>('a')
+        ?.focus();
     }
   }, [menuOpen]);
 
@@ -88,26 +75,22 @@ const Header = () => {
         backdrop-blur-xl
       "
     >
-      {/* =====================================
-          MAIN HEADER CONTAINER
-      ===================================== */}
       <div
         className="
-          mx-auto flex h-[78px] w-full
-          max-w-[1440px]
-          items-center justify-between
-          gap-4 px-4
+          mx-auto flex h-[78px] w-full max-w-[1440px]
+          items-center justify-between gap-4 px-4
           sm:px-6 lg:px-8
         "
       >
-        {/* LOGO */}
+        {/* =====================================
+            LOGO
+        ===================================== */}
+
         <Link
           to="/"
           className="
-            relative z-10 flex shrink-0
-            items-center
-            transition-opacity duration-200
-            hover:opacity-85
+            relative z-10 flex shrink-0 items-center
+            transition-opacity duration-200 hover:opacity-85
           "
           aria-label="InLoveNailz home"
           onClick={closeMenu}
@@ -116,134 +99,103 @@ const Header = () => {
             src="/logo.png"
             alt="InLoveNailz by Briana"
             className="
-              block h-auto max-h-[64px]
-              w-[145px] object-contain
-              sm:w-[165px]
-              xl:w-[185px]
+              block h-auto max-h-[64px] w-[145px] object-contain
+              sm:w-[165px] xl:w-[185px]
             "
           />
         </Link>
 
-        {/* DESKTOP NAVIGATION */}
-        <nav
-          className="
-            hidden items-center
-            justify-center
-            gap-5 xl:gap-8
-            lg:flex
-          "
-          aria-label="Main navigation"
-        >
-          {navItems.map(({ label, path }) => {
-            const active = isActive(path, label);
+        {/* =====================================
+            DESKTOP NAVIGATION AND ACTIONS
+        ===================================== */}
 
-            return (
-              <Link
-                key={label}
-                to={path}
-                aria-current={active ? 'page' : undefined}
-                className={`
-                  group relative whitespace-nowrap
-                  py-2 text-[13px]
-                  font-medium tracking-[0.02em]
-                  transition-colors duration-200
-                  ${
-                    active
-                      ? 'text-[#963F60]'
-                      : 'text-[#29252B] hover:text-[#963F60]'
-                  }
-                `}
-              >
-                {label}
-                <span
-                  aria-hidden="true"
+        <div className="ml-auto flex shrink-0 items-center gap-3 lg:gap-5">
+          <nav
+            className="hidden items-center justify-end gap-5 lg:flex xl:gap-7"
+            aria-label="Main navigation"
+          >
+            {navItems.map(({ label, path }) => {
+              const active = isActive(path, label);
+
+              return (
+                <Link
+                  key={label}
+                  to={path}
+                  aria-current={active ? 'page' : undefined}
                   className={`
-                    absolute bottom-[3px] left-0
-                    h-[1.5px] bg-[#963F60]
-                    transition-all duration-300
-                    ${active ? 'w-full' : 'w-0 group-hover:w-full'}
+                    group relative whitespace-nowrap py-2 text-[13px]
+                    font-medium tracking-[0.02em] transition-colors duration-200
+                    ${
+                      active
+                        ? 'text-[#963F60]'
+                        : 'text-[#29252B] hover:text-[#963F60]'
+                    }
                   `}
-                />
-              </Link>
-            );
-          })}
-        </nav>
+                >
+                  {label}
 
-        {/* RIGHT HEADER ACTIONS */}
-        <div
-          className="
-            relative z-10 flex shrink-0
-            items-center gap-1
-            sm:gap-2 lg:gap-3
-          "
-        >
-          {/* INSTAGRAM */}
+                  <span
+                    aria-hidden="true"
+                    className={`
+                      absolute bottom-[3px] left-0 h-[1.5px]
+                      bg-[#963F60] transition-all duration-300
+                      ${active ? 'w-full' : 'w-0 group-hover:w-full'}
+                    `}
+                  />
+                </Link>
+              );
+            })}
+          </nav>
+
+          {/* =====================================
+              INSTAGRAM
+          ===================================== */}
+
           <a
             href="https://www.instagram.com/briilovesnailz"
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Visit InLoveNailz on Instagram"
             className="
-              hidden h-10 w-10
-              items-center justify-center
-              rounded-full
-              text-[#963F60]
-              transition-colors duration-200
-              hover:bg-[#F7DDE4]
-              sm:inline-flex
+              hidden h-10 w-10 items-center justify-center rounded-full
+              text-[#963F60] transition-colors duration-200
+              hover:bg-[#F7DDE4] sm:inline-flex
             "
           >
-            <Instagram size={19} strokeWidth={1.7} aria-hidden="true" />
+            <Instagram
+              size={19}
+              strokeWidth={1.7}
+              aria-hidden="true"
+            />
           </a>
 
-          {/* BOOK NOW BUTTON */}
-          <Link
-            to="/book"
-            className="
-              hidden h-[42px]
-              items-center justify-center
-              gap-2 rounded-[7px]
-              bg-[#963F60]
-              px-5 text-[12px]
-              font-semibold tracking-[0.02em]
-              text-white
-              transition-all duration-200
-              hover:-translate-y-[1px]
-              hover:bg-[#79324F]
-              md:inline-flex
-            "
-          >
-            Book Now
-            <ArrowUpRight size={15} strokeWidth={1.8} aria-hidden="true" />
-          </Link>
+          {/* =====================================
+              SHOPPING BAG
+          ===================================== */}
 
-          {/* SHOPPING BAG */}
           <Link
             to="/cart"
             className="
-              relative inline-flex
-              h-10 w-10
-              items-center justify-center
-              rounded-full
-              text-[#963F60]
-              transition-colors duration-200
+              relative inline-flex h-10 w-10 items-center justify-center
+              rounded-full text-[#963F60] transition-colors duration-200
               hover:bg-[#F7DDE4]
             "
             aria-label={`View booking bag, ${itemCount} selected services`}
             onClick={closeMenu}
           >
-            <ShoppingBag size={22} strokeWidth={1.7} aria-hidden="true" />
+            <ShoppingBag
+              size={22}
+              strokeWidth={1.7}
+              aria-hidden="true"
+            />
+
             {itemCount > 0 && (
               <Badge
                 className="
-                  absolute -right-1 -top-1
-                  flex h-[19px] min-w-[19px]
-                  items-center justify-center
-                  rounded-full border-0
-                  bg-[#963F60]
-                  px-1 text-[10px]
-                  font-semibold text-white
-                  shadow-none
+                  absolute -right-1 -top-1 flex h-[19px] min-w-[19px]
+                  items-center justify-center rounded-full border-0
+                  bg-[#963F60] px-1 text-[10px] font-semibold
+                  text-white shadow-none
                 "
               >
                 {itemCount}
@@ -251,28 +203,39 @@ const Header = () => {
             )}
           </Link>
 
-          {/* MOBILE MENU BUTTON */}
+          {/* =====================================
+              MOBILE MENU BUTTON
+          ===================================== */}
+
           <button
             ref={menuButtonRef}
             type="button"
-            aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-label={
+              menuOpen
+                ? 'Close navigation menu'
+                : 'Open navigation menu'
+            }
             aria-expanded={menuOpen}
             aria-controls="inl-mobile-navigation"
             onClick={() => setMenuOpen(previous => !previous)}
             className="
-              inline-flex h-10 w-10
-              items-center justify-center
-              rounded-full
-              text-[#963F60]
-              transition-colors duration-200
-              hover:bg-[#F7DDE4]
-              lg:hidden
+              inline-flex h-10 w-10 items-center justify-center rounded-full
+              text-[#963F60] transition-colors duration-200
+              hover:bg-[#F7DDE4] lg:hidden
             "
           >
             {menuOpen ? (
-              <X size={23} strokeWidth={1.7} aria-hidden="true" />
+              <X
+                size={23}
+                strokeWidth={1.7}
+                aria-hidden="true"
+              />
             ) : (
-              <Menu size={23} strokeWidth={1.7} aria-hidden="true" />
+              <Menu
+                size={23}
+                strokeWidth={1.7}
+                aria-hidden="true"
+              />
             )}
           </button>
         </div>
@@ -280,22 +243,18 @@ const Header = () => {
 
       {/* =====================================
           MOBILE NAVIGATION
-          Hidden is applied when closed so its
-          links cannot be reached using Tab.
       ===================================== */}
+
       <nav
         ref={mobileNavRef}
         id="inl-mobile-navigation"
         aria-label="Mobile navigation"
         aria-hidden={!menuOpen}
         className={`
-          absolute left-0 right-0 top-full
-          overflow-hidden
-          border-b border-[#F7DDE4]
-          bg-[#FFF7F8]
+          absolute left-0 right-0 top-full overflow-hidden
+          border-b border-[#F7DDE4] bg-[#FFF7F8]
           shadow-[0_16px_25px_rgba(41,37,43,0.07)]
-          transition-all duration-300
-          lg:hidden
+          transition-all duration-300 lg:hidden
           ${
             menuOpen
               ? 'visible max-h-[85vh] opacity-100'
@@ -305,14 +264,10 @@ const Header = () => {
       >
         <div
           className="
-            mx-auto flex max-h-[85vh]
-            max-w-[1440px]
-            flex-col gap-1
-            overflow-y-auto
-            px-6 pb-7 pt-5
+            mx-auto flex max-h-[85vh] max-w-[1440px]
+            flex-col gap-1 overflow-y-auto px-6 pb-7 pt-5
           "
         >
-          {/* MOBILE NAV LINKS */}
           {navItems.map(({ label, path }) => {
             const active = isActive(path, label);
 
@@ -324,10 +279,8 @@ const Header = () => {
                 tabIndex={menuOpen ? 0 : -1}
                 aria-current={active ? 'page' : undefined}
                 className={`
-                  border-b border-[#F7DDE4]/70
-                  py-3 text-[14px]
-                  font-medium
-                  transition-colors duration-200
+                  border-b border-[#F7DDE4]/70 py-3 text-[14px]
+                  font-medium transition-colors duration-200
                   ${
                     active
                       ? 'text-[#963F60]'
@@ -340,27 +293,10 @@ const Header = () => {
             );
           })}
 
-          {/* MOBILE BOOK NOW */}
-          <Link
-            to="/book"
-            onClick={closeMenu}
-            tabIndex={menuOpen ? 0 : -1}
-            className="
-              mt-5 flex min-h-[46px]
-              items-center justify-center
-              gap-2 rounded-[7px]
-              bg-[#963F60]
-              px-5 text-[13px]
-              font-semibold text-white
-              transition-colors
-              hover:bg-[#79324F]
-            "
-          >
-            Book Your Appointment
-            <ArrowUpRight size={17} aria-hidden="true" />
-          </Link>
+          {/* =====================================
+              MOBILE INSTAGRAM
+          ===================================== */}
 
-          {/* MOBILE INSTAGRAM */}
           <a
             href="https://www.instagram.com/briilovesnailz"
             target="_blank"
@@ -368,10 +304,8 @@ const Header = () => {
             onClick={closeMenu}
             tabIndex={menuOpen ? 0 : -1}
             className="
-              mt-3 flex items-center
-              justify-center gap-2
-              py-2 text-[13px]
-              font-medium text-[#963F60]
+              mt-3 flex items-center justify-center gap-2 py-2
+              text-[13px] font-medium text-[#963F60]
             "
           >
             <Instagram size={17} aria-hidden="true" />
