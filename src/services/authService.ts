@@ -1,31 +1,93 @@
-// Simulated admin authentication
-// In production, this would connect to a real backend
 
-const ADMIN_CREDENTIALS = {
-  email: 'Inlovenailz@admin.com',
-  password: 'LehotaB12@' // In production, use proper password hashing
-};
+/**
+ * InLoveNailz administrator authentication
+ *
+ * Authentication is handled by secure backend APIs.
+ * Administrator credentials are never stored in
+ * frontend source code or localStorage.
+ */
 
-export const login = async (email: string, password: string): Promise<boolean> => {
-  console.log('Attempting login with:', email);
-  
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 500));
-  
-  // Make email comparison case-insensitive
-  if (email.toLowerCase() === ADMIN_CREDENTIALS.email.toLowerCase() && password === ADMIN_CREDENTIALS.password) {
-    localStorage.setItem('isAdminAuthenticated', 'true');
-    return true;
+export const login = async (
+  email: string,
+  password: string
+): Promise<boolean> => {
+  try {
+    const response = await fetch('/api/admin-login', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: email.trim(),
+        password,
+      }),
+    });
+
+    if (!response.ok) {
+      return false;
+    }
+
+    const result = await response.json();
+
+    return (
+      result.success === true &&
+      result.authenticated === true
+    );
+  } catch (error) {
+    console.error('Administrator login request failed:', error);
+    return false;
   }
-  
-  return false;
 };
 
-export const logout = () => {
-  console.log('Logging out admin');
-  localStorage.removeItem('isAdminAuthenticated');
+/**
+ * Verify the administrator session with the server.
+ *
+ * Never trust localStorage as proof of authentication.
+ */
+export const isAuthenticated = async (): Promise<boolean> => {
+  try {
+    const response = await fetch('/api/admin-session', {
+      method: 'GET',
+      credentials: 'same-origin',
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      return false;
+    }
+
+    const result = await response.json();
+
+    return (
+      result.success === true &&
+      result.authenticated === true
+    );
+  } catch (error) {
+    console.error('Administrator session check failed:', error);
+    return false;
+  }
 };
 
-export const isAuthenticated = (): boolean => {
-  return localStorage.getItem('isAdminAuthenticated') === 'true';
+/**
+ * Clear the administrator's server-issued session cookie.
+ */
+export const logout = async (): Promise<boolean> => {
+  try {
+    const response = await fetch('/api/admin-logout', {
+      method: 'POST',
+      credentials: 'same-origin',
+    });
+
+    if (!response.ok) {
+      return false;
+    }
+
+    const result = await response.json();
+
+    return result.success === true;
+  } catch (error) {
+    console.error('Administrator logout request failed:', error);
+    return false;
+  }
 };

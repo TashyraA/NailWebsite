@@ -15,9 +15,10 @@ function getCookieHeader(
   token: string,
   maxAge: number
 ): string {
-  const secure = process.env.NODE_ENV === 'production'
-    ? '; Secure'
-    : '';
+  const secure =
+    process.env.NODE_ENV === 'production'
+      ? '; Secure'
+      : '';
 
   return [
     `${COOKIE_NAME}=${encodeURIComponent(token)}`,
@@ -29,8 +30,9 @@ function getCookieHeader(
 }
 
 function createSessionToken(secret: string): string {
-  const expiresAt = Math.floor(Date.now() / 1000)
-    + SESSION_DURATION_SECONDS;
+  const expiresAt =
+    Math.floor(Date.now() / 1000) +
+    SESSION_DURATION_SECONDS;
 
   const payload = [
     'v1',
@@ -63,6 +65,7 @@ function verifyPassword(
   }
 
   const expected = Buffer.from(expectedHex, 'hex');
+
   const actual = scryptSync(
     password,
     Buffer.from(saltHex, 'hex'),
@@ -70,6 +73,35 @@ function verifyPassword(
   );
 
   return timingSafeEqual(actual, expected);
+}
+
+function isAllowedOrigin(req: any): boolean {
+  const origin = req.headers.origin;
+  const host = req.headers.host;
+
+  if (
+    typeof origin !== 'string' ||
+    typeof host !== 'string'
+  ) {
+    return false;
+  }
+
+  try {
+    const originUrl = new URL(origin);
+
+    return (
+      originUrl.host === host &&
+      (
+        originUrl.protocol === 'https:' ||
+        (
+          process.env.NODE_ENV !== 'production' &&
+          originUrl.protocol === 'http:'
+        )
+      )
+    );
+  } catch {
+    return false;
+  }
 }
 
 export default async function handler(
@@ -80,9 +112,17 @@ export default async function handler(
 
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
+
     return res.status(405).json({
       success: false,
       error: 'Method not allowed',
+    });
+  }
+
+  if (!isAllowedOrigin(req)) {
+    return res.status(403).json({
+      success: false,
+      error: 'Invalid request origin',
     });
   }
 
@@ -97,7 +137,9 @@ export default async function handler(
     !sessionSecret ||
     !databaseUrl
   ) {
-    console.error('Admin authentication configuration missing');
+    console.error(
+      'Admin authentication configuration missing'
+    );
 
     return res.status(500).json({
       success: false,
@@ -108,13 +150,15 @@ export default async function handler(
   try {
     const body = req.body || {};
 
-    const email = typeof body.email === 'string'
-      ? body.email.trim().toLowerCase()
-      : '';
+    const email =
+      typeof body.email === 'string'
+        ? body.email.trim().toLowerCase()
+        : '';
 
-    const password = typeof body.password === 'string'
-      ? body.password
-      : '';
+    const password =
+      typeof body.password === 'string'
+        ? body.password
+        : '';
 
     if (
       !email ||
@@ -131,9 +175,11 @@ export default async function handler(
     const sql = neon(databaseUrl);
 
     const ipHeader = req.headers['x-forwarded-for'];
-    const ip = typeof ipHeader === 'string'
-      ? ipHeader.split(',')[0].trim()
-      : 'unknown';
+
+    const ip =
+      typeof ipHeader === 'string'
+        ? ipHeader.split(',')[0].trim()
+        : 'unknown';
 
     const ipHash = createHmac('sha256', sessionSecret)
       .update(ip)
