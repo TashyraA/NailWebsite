@@ -1,4 +1,5 @@
 
+import { createHash, randomBytes } from 'crypto';
 import { neon } from '@neondatabase/serverless';
 
 import { normalizeBooking } from './_booking.js';
@@ -9,6 +10,8 @@ import { escapeHtml, sendEmail } from './_email.js';
    APPOINTMENT REQUEST API
 
    - Save appointment requests to Neon
+   - Generate private review links for Briana
+   - Store only hashed review tokens
    - No automatic deposit payments
    - No Stripe Checkout at request time
    - Email Briana appointment details
@@ -16,12 +19,41 @@ import { escapeHtml, sendEmail } from './_email.js';
    - Appointments require manual approval
 ========================================= */
 
+const REVIEW_LINK_HOURS = 48;
+
+const WEBSITE_URL = 'https://www.inlovenailz.com';
+
+/* =====================================
+   GENERATE PRIVATE REVIEW TOKEN
+===================================== */
+
+const createReviewToken = () => {
+  const token = randomBytes(32).toString('hex');
+
+  const tokenHash = createHash('sha256')
+    .update(token)
+    .digest('hex');
+
+  return {
+    token,
+    tokenHash,
+  };
+};
+
+/* =====================================
+   REQUEST HANDLER
+===================================== */
+
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+
     return res.status(405).json({
       error: 'Method not allowed',
     });
   }
+
+  res.setHeader('Cache-Control', 'no-store');
 
   try {
     /* =====================================
@@ -67,6 +99,10 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    /* =====================================
+       OWNER EMAIL
+    ===================================== */
+
     const ownerEmail =
       process.env.BOOKING_NOTIFICATION_EMAIL ||
       process.env.BUSINESS_EMAIL;
@@ -76,6 +112,16 @@ export default async function handler(req: any, res: any) {
         'BOOKING_NOTIFICATION_EMAIL or BUSINESS_EMAIL is not configured'
       );
     }
+
+    /* =====================================
+       GENERATE SECURE REVIEW LINK
+    ===================================== */
+
+    const { token, tokenHash } = createReviewToken();
+
+    const reviewTokenExpiresAt = new Date(
+      Date.now() + REVIEW_LINK_HOURS * 60 * 60 * 1000
+    );
 
     /* =====================================
        SAVE APPOINTMENT TO NEON
@@ -92,7 +138,9 @@ export default async function handler(req: any, res: any) {
         total_price,
         notes,
         inspiration_url,
-        status
+        status,
+        review_token_hash,
+        review_token_expires_at
       )
       VALUES (
         ${booking.customerName},
@@ -104,25 +152,53 @@ export default async function handler(req: any, res: any) {
         ${booking.totalPrice},
         ${booking.notes || null},
         ${booking.inspirationUrl || null},
-        'pending'
+        'pending',
+        ${tokenHash},
+        ${reviewTokenExpiresAt.toISOString()}
       )
       RETURNING id
     `;
 
+    if (!savedRows.length || !savedRows[0]?.id) {
+      throw new Error(
+        'Appointment database insert returned no ID'
+      );
+    }
+
     const appointmentId = String(savedRows[0].id);
 
     console.log(
-      'Appointment request saved successfully:',
+      'Appointment request saved:',
       appointmentId
     );
 
     /* =====================================
-       PREPARE EMAIL DETAILS
+       BUILD PRIVATE REVIEW URL
+    ===================================== */
+
+    const configuredUrl =
+      process.env.APP_URL?.trim() || WEBSITE_URL;
+
+    const baseUrl = configuredUrl.replace(/\/+$/, '');
+
+    const reviewUrl = new URL(
+      '/api/review-appointment',
+      baseUrl
+    );
+
+    reviewUrl.searchParams.set('id', appointmentId);
+    reviewUrl.searchParams.set('token', token);
+
+    const privateReviewLink = reviewUrl.toString();
+
+    /* =====================================
+       PREPARE SERVICE DETAILS
     ===================================== */
 
     const servicesHtml = booking.services
       .map(item => {
         const service = item.service || item;
+
         const quantity = Number(item.quantity) || 1;
 
         const title = escapeHtml(
@@ -143,16 +219,34 @@ export default async function handler(req: any, res: any) {
       })
       .join('');
 
-    const customerName = escapeHtml(booking.customerName);
-    const customerEmail = escapeHtml(booking.customerEmail);
-    const customerPhone = escapeHtml(booking.customerPhone);
-    const appointmentDate = escapeHtml(booking.appointmentDate);
-    const appointmentTime = escapeHtml(booking.appointmentTime);
-    const safeAppointmentId = escapeHtml(appointmentId);
+    const customerName = escapeHtml(
+      booking.customerName
+    );
+
+    const customerEmail = escapeHtml(
+      booking.customerEmail
+    );
+
+    const customerPhone = escapeHtml(
+      booking.customerPhone
+    );
+
+    const appointmentDate = escapeHtml(
+      booking.appointmentDate
+    );
+
+    const appointmentTime = escapeHtml(
+      booking.appointmentTime
+    );
+
+    const safeAppointmentId = escapeHtml(
+      appointmentId
+    );
 
     const notes = escapeHtml(
       String(
-        booking.notes || 'No additional notes provided'
+        booking.notes ||
+        'No additional notes provided'
       )
     );
 
@@ -164,6 +258,12 @@ export default async function handler(req: any, res: any) {
       /^https:\/\/[^\s"'<>]+$/i.test(inspirationUrl)
         ? escapeHtml(inspirationUrl)
         : '';
+
+    const serviceTotal = booking.totalPrice.toFixed(2);
+
+    const safeReviewLink = escapeHtml(
+      privateReviewLink
+    );
 
     /* =====================================
        EMAIL BRIANA
@@ -195,16 +295,34 @@ export default async function handler(req: any, res: any) {
           Customer Information
         </h2>
 
-        <p><strong>Name:</strong> ${customerName}</p>
-        <p><strong>Email:</strong> ${customerEmail}</p>
-        <p><strong>Phone:</strong> ${customerPhone}</p>
+        <p>
+          <strong>Name:</strong>
+          ${customerName}
+        </p>
+
+        <p>
+          <strong>Email:</strong>
+          ${customerEmail}
+        </p>
+
+        <p>
+          <strong>Phone:</strong>
+          ${customerPhone}
+        </p>
 
         <h2 style="color:#963F60;">
           Requested Appointment
         </h2>
 
-        <p><strong>Date:</strong> ${appointmentDate}</p>
-        <p><strong>Time:</strong> ${appointmentTime}</p>
+        <p>
+          <strong>Date:</strong>
+          ${appointmentDate}
+        </p>
+
+        <p>
+          <strong>Time:</strong>
+          ${appointmentTime}
+        </p>
 
         <h2 style="color:#963F60;">
           Selected Services
@@ -216,7 +334,7 @@ export default async function handler(req: any, res: any) {
 
         <p style="font-size:18px;">
           <strong>Service Total:</strong>
-          $${booking.totalPrice.toFixed(2)}
+          $${serviceTotal}
         </p>
 
         <h2 style="color:#963F60;">
@@ -240,7 +358,14 @@ export default async function handler(req: any, res: any) {
             : ''
         }
 
-        <hr style="border:1px solid #EAC5D0;">
+        <hr style="
+          border:1px solid #EAC5D0;
+          margin:24px 0;
+        ">
+
+        <h2 style="color:#963F60;">
+          Review Appointment
+        </h2>
 
         <p>
           <strong>Status:</strong>
@@ -248,13 +373,52 @@ export default async function handler(req: any, res: any) {
         </p>
 
         <p>
-          This appointment request has been saved
-          to the InLoveNailz database.
+          This appointment request has been
+          saved to the InLoveNailz database.
         </p>
 
         <p>
-          Please review the appointment request
-          before requesting a deposit.
+          Use your private review link to
+          review the request when the approval
+          system is available.
+        </p>
+
+        <p style="margin:24px 0;">
+          <a
+            href="${safeReviewLink}"
+            style="
+              display:inline-block;
+              background:#963F60;
+              color:#FFFFFF;
+              padding:14px 24px;
+              border-radius:30px;
+              text-decoration:none;
+              font-weight:bold;
+            "
+          >
+            Review Appointment Request
+          </a>
+        </p>
+
+        <p style="
+          font-size:13px;
+          color:#806B75;
+        ">
+          This private review link expires
+          after ${REVIEW_LINK_HOURS} hours.
+
+          Do not forward this email or share
+          the review link with customers.
+        </p>
+
+        <p style="
+          font-size:13px;
+          color:#806B75;
+        ">
+          The review page is being set up.
+          Until it is available, you can
+          review this request using the
+          appointment details in this email.
         </p>
       </div>
     `;
@@ -278,8 +442,11 @@ export default async function handler(req: any, res: any) {
         <p>Hi ${customerName},</p>
 
         <p>
-          Thank you for choosing InLoveNailz by Briana!
-          We have received your appointment request.
+          Thank you for choosing InLoveNailz
+          by Briana!
+
+          We have received your appointment
+          request.
         </p>
 
         <p>
@@ -291,8 +458,15 @@ export default async function handler(req: any, res: any) {
           Your Requested Appointment
         </h2>
 
-        <p><strong>Date:</strong> ${appointmentDate}</p>
-        <p><strong>Time:</strong> ${appointmentTime}</p>
+        <p>
+          <strong>Date:</strong>
+          ${appointmentDate}
+        </p>
+
+        <p>
+          <strong>Time:</strong>
+          ${appointmentTime}
+        </p>
 
         <h3>Your Services</h3>
 
@@ -302,13 +476,14 @@ export default async function handler(req: any, res: any) {
 
         <p>
           <strong>Service Total:</strong>
-          $${booking.totalPrice.toFixed(2)}
+          $${serviceTotal}
         </p>
 
         <p>
-          Briana will review your request and
-          email you with the required deposit
-          amount and next steps if approved.
+          Briana will review your request
+          and email you with the required
+          deposit amount and next steps
+          if approved.
         </p>
 
         <p style="
@@ -324,13 +499,15 @@ export default async function handler(req: any, res: any) {
           No payment is required to submit
           your appointment request.
 
-          Your appointment will only be confirmed
-          after approval and successful payment
-          of the required deposit.
+          Your appointment will only be
+          confirmed after approval and
+          successful payment of the
+          required deposit.
         </p>
 
         <p>
-          Thank you for supporting InLoveNailz!
+          Thank you for supporting
+          InLoveNailz!
         </p>
       </div>
     `;
@@ -339,9 +516,9 @@ export default async function handler(req: any, res: any) {
        SEND EMAIL NOTIFICATIONS
     ===================================== */
 
-    // The request has already been saved.
-    // Email failures must not cause the customer
-    // to resubmit and create duplicate requests.
+    // The appointment has already been saved.
+    // Email delivery failures are logged,
+    // but do not undo the saved request.
 
     try {
       await sendEmail(
@@ -380,7 +557,6 @@ export default async function handler(req: any, res: any) {
       message:
         'Your appointment request has been received and is pending review.',
     });
-
   } catch (error: unknown) {
     console.error(
       'Request appointment error:',
