@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
-import { getServices } from '@/services/servicesData';
+import type { Service } from '@/types';
 import ServiceCard from '@/components/ServiceCard';
 
 import {
@@ -13,6 +13,32 @@ import {
   Loader2,
   ShoppingBag,
 } from 'lucide-react';
+
+
+async function getNeonServices(): Promise<Service[]> {
+  const response = await fetch('/api/services', {
+    method: 'GET',
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Unable to load services (${response.status}).`
+    );
+  }
+
+  const result = await response.json();
+
+  if (
+    result?.success !== true ||
+    !Array.isArray(result.services)
+  ) {
+    throw new Error('Invalid services response.');
+  }
+
+  return result.services as Service[];
+}
+
 
 const CATEGORY_ORDER = [
   'Acrylic Full Sets',
@@ -27,15 +53,20 @@ const Services: React.FC = () => {
   const [selectedCategory, setSelectedCategory] =
     useState('All');
 
-  const {
-    data: services = [],
-    isLoading,
-    isError,
-    refetch,
-  } = useQuery({
-    queryKey: ['services'],
-    queryFn: getServices,
-  });
+  
+const {
+  data: services = [],
+  isLoading,
+  isError,
+  refetch,
+} = useQuery({
+  queryKey: ['neonPublicServices'],
+  queryFn: getNeonServices,
+  staleTime: 30 * 1000,
+  refetchOnWindowFocus: true,
+  retry: 1,
+});
+
 
   const categories = useMemo(() => {
     const availableCategories = Array.from(
