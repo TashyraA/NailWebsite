@@ -1,30 +1,56 @@
 
 import { randomUUID } from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
-import {
-  requireAdmin,
-} from './_admin-auth.js';
+import { requireAdmin } from './_admin-auth.js';
 
 const MAX_IMAGES = 20;
 
 function isValidImageUrl(value: unknown): value is string {
-  if (typeof value !== 'string' || value.length > 2048) {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > 2048
+  ) {
     return false;
   }
 
+  // Allow existing locally hosted service images.
   if (value.startsWith('/')) {
-    return !value.startsWith('//') &&
+    return (
+      !value.startsWith('//') &&
       !value.includes('\\') &&
-      !/[\r\n]/.test(value);
+      !/[\r\n]/.test(value)
+    );
   }
 
   try {
     const url = new URL(value);
 
+    // Only allow secure Cloudinary image URLs.
+    if (
+      url.protocol !== 'https:' ||
+      url.hostname !== 'res.cloudinary.com' ||
+      url.username ||
+      url.password
+    ) {
+      return false;
+    }
+
+    // Cloudinary image URLs normally look like:
+    // /cloud-name/image/upload/v123456/photo.jpg
+    const pathParts = url.pathname
+      .split('/')
+      .filter(Boolean);
+
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+
     return (
-      url.protocol === 'https:' &&
-      url.hostname === 'res.cloudinary.com' &&
-      url.pathname.startsWith('/image/upload/')
+      typeof cloudName === 'string' &&
+      cloudName.length > 0 &&
+      pathParts.length >= 4 &&
+      pathParts[0] === cloudName &&
+      pathParts[1] === 'image' &&
+      pathParts[2] === 'upload'
     );
   } catch {
     return false;
@@ -65,6 +91,8 @@ export default async function handler(
     });
   }
 
+  // Require a valid administrator session
+  // and a same-origin request.
   if (!requireAdmin(req, res, true)) {
     return;
   }
@@ -72,6 +100,8 @@ export default async function handler(
   const databaseUrl = process.env.DATABASE_URL;
 
   if (!databaseUrl) {
+    console.error('DATABASE_URL is missing');
+
     return res.status(500).json({
       success: false,
       error: 'Database is not configured',
@@ -121,6 +151,8 @@ export default async function handler(
   const images = body.images;
   const isActive = body.isActive;
 
+  // Validate all service information before
+  // making any changes to the database.
   if (
     title.length < 2 ||
     title.length > 150 ||
