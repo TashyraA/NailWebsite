@@ -1,6 +1,6 @@
 
 import { neon } from '@neondatabase/serverless';
-import { requireAdmin } from './_admin-auth';
+import { requireAdmin } from './_admin-auth.js';
 
 export default async function handler(
   req: any,
