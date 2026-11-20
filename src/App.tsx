@@ -12,7 +12,6 @@ import {
 
 import { CartProvider } from "@/contexts/CartContext";
 
-import BackgroundMusic from "@/components/BackgroundMusic";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 
@@ -81,7 +80,6 @@ function App() {
           <BrowserRouter>
             <Toaster />
             <Sonner />
-            <BackgroundMusic />
 
             <Routes>
               {/* PUBLIC ROUTES */}
