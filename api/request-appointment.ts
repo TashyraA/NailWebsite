@@ -9,14 +9,18 @@ import { escapeHtml, sendEmail } from './_email.js';
    INLOVENAILZ BY BRIANA
    SECURE APPOINTMENT REQUEST API
 
-   - Validate selected services against Neon
-   - Reject inactive or missing services
-   - Calculate official service totals
-   - Calculate appointment duration
-   - Save pending requests to Neon
+   - Verify services and prices against Neon
+   - Verify service duration against Neon
+   - Validate the dynamic salon schedule
+   - Respect added and removed time slots
+   - Respect full-day and partial blocks
+   - Prevent requests for reserved times
+   - Enforce a 15-minute booking buffer
+   - Enforce 24-hour advance notice
+   - Save pending requests
    - Generate private review links
    - Notify Briana and the customer
-   - No deposit payment at request time
+   - No payment required at request time
 ========================================= */
 
 const REVIEW_LINK_HOURS = 48;
@@ -27,9 +31,9 @@ const MAX_QUANTITY = 10;
 const MAX_TOTAL_QUANTITY = 30;
 const MAX_REQUEST_BYTES = 100_000;
 
-/* =====================================
-   TYPES
-===================================== */
+const MAX_APPOINTMENT_DURATION = 120;
+const BUFFER_MINUTES = 15;
+const MINIMUM_NOTICE_HOURS = 24;
 
 type RequestedService = {
   id: string;
@@ -64,6 +68,15 @@ type VerifiedCartItem = {
   quantity: number;
 };
 
+type ScheduleCheckRow = {
+  has_valid_local_time: boolean;
+  has_enough_notice: boolean;
+  is_scheduled: boolean;
+  is_removed: boolean;
+  is_blocked: boolean;
+  has_reservation_conflict: boolean;
+};
+
 class RequestValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -82,10 +95,7 @@ function createReviewToken() {
     .update(token)
     .digest('hex');
 
-  return {
-    token,
-    tokenHash,
-  };
+  return { token, tokenHash };
 }
 
 /* =====================================
@@ -258,9 +268,7 @@ function validateCustomerDetails(booking: {
     let parsedUrl: URL;
 
     try {
-      parsedUrl = new URL(
-        booking.inspirationUrl
-      );
+      parsedUrl = new URL(booking.inspirationUrl);
     } catch {
       throw new RequestValidationError(
         'Invalid inspiration image URL.'
@@ -269,8 +277,7 @@ function validateCustomerDetails(booking: {
 
     if (
       parsedUrl.protocol !== 'https:' ||
-      parsedUrl.hostname !==
-        'res.cloudinary.com' ||
+      parsedUrl.hostname !== 'res.cloudinary.com' ||
       booking.inspirationUrl.length > 2000
     ) {
       throw new RequestValidationError(
@@ -299,7 +306,6 @@ async function verifyServices(
 }> {
   const ids = requested.map(item => item.id);
 
-  // Retrieve official catalog information.
   const queryResult = await sql`
     SELECT
       id,
@@ -314,30 +320,19 @@ async function verifyServices(
     WHERE id = ANY(${ids}::text[])
   `;
 
-  // Neon supports multiple result formats.
-  // Verify that this query returned rows.
   if (!Array.isArray(queryResult)) {
     throw new Error(
       'Unexpected response from the service database.'
     );
   }
 
-  // The SELECT statement above returns
-  // objects with these named columns.
-  const rows =
-    queryResult as ServiceDatabaseRow[];
+  const rows = queryResult as ServiceDatabaseRow[];
 
-  const catalog = new Map<
-    string,
-    CatalogService
-  >();
+  const catalog = new Map<string, CatalogService>();
 
   for (const row of rows) {
     const price = Number(row.price);
-
-    const duration = Number(
-      row.duration_minutes
-    );
+    const duration = Number(row.duration_minutes);
 
     if (
       !Number.isFinite(price) ||
@@ -360,9 +355,7 @@ async function verifyServices(
     catalog.set(String(row.id), {
       id: String(row.id),
       title: String(row.title),
-      description: String(
-        row.description || ''
-      ),
+      description: String(row.description || ''),
       price,
       duration,
       category: String(row.category),
@@ -378,9 +371,7 @@ async function verifyServices(
   let durationMinutes = 0;
 
   for (const requestedItem of requested) {
-    const service = catalog.get(
-      requestedItem.id
-    );
+    const service = catalog.get(requestedItem.id);
 
     if (!service || !service.isActive) {
       throw new RequestValidationError(
@@ -396,8 +387,7 @@ async function verifyServices(
       serviceCents * requestedItem.quantity;
 
     durationMinutes +=
-      service.duration *
-      requestedItem.quantity;
+      service.duration * requestedItem.quantity;
 
     verifiedItems.push({
       service,
@@ -408,10 +398,12 @@ async function verifyServices(
   if (
     !Number.isSafeInteger(totalCents) ||
     totalCents < 0 ||
-    durationMinutes > 1440
+    !Number.isSafeInteger(durationMinutes) ||
+    durationMinutes <= 0 ||
+    durationMinutes > MAX_APPOINTMENT_DURATION
   ) {
     throw new RequestValidationError(
-      'The selected services exceed the allowed appointment limits.'
+      'Please select services totaling no more than 120 minutes.'
     );
   }
 
@@ -420,6 +412,231 @@ async function verifyServices(
     totalPrice: totalCents / 100,
     durationMinutes,
   };
+}
+
+/* =====================================
+   VERIFY LIVE SCHEDULE AGAINST NEON
+
+   This is independent of the customer's
+   browser and uses the official duration
+   calculated from salon_services.
+
+   Pending requests do not reserve time.
+===================================== */
+
+async function verifyAppointmentAvailability(
+  sql: ReturnType<typeof neon>,
+  appointmentDate: string,
+  appointmentTime: string,
+  durationMinutes: number
+): Promise<void> {
+  const result = await sql`
+    WITH candidate AS (
+      SELECT
+        ${appointmentDate}::date AS appointment_date,
+        ${appointmentTime}::time AS appointment_time,
+
+        (
+          (
+            ${appointmentDate}::date +
+            ${appointmentTime}::time
+          )
+          AT TIME ZONE 'America/New_York'
+        ) AS starts_at,
+
+        (
+          ${appointmentDate}::date +
+          ${appointmentTime}::time
+        ) AS local_start
+    ),
+
+    appointment_window AS (
+      SELECT
+        appointment_date,
+        appointment_time,
+        local_start,
+        starts_at,
+
+        starts_at +
+          (
+            ${durationMinutes}::integer *
+            INTERVAL '1 minute'
+          ) AS ends_at
+
+      FROM candidate
+    )
+
+    SELECT
+      (
+        starts_at AT TIME ZONE
+          'America/New_York'
+      ) = local_start
+        AS has_valid_local_time,
+
+      starts_at >=
+        NOW() +
+        (
+          ${MINIMUM_NOTICE_HOURS}::integer *
+          INTERVAL '1 hour'
+        )
+        AS has_enough_notice,
+
+      (
+        EXISTS (
+          SELECT 1
+
+          FROM salon_weekly_schedule weekly
+
+          WHERE weekly.day_of_week =
+            EXTRACT(
+              DOW FROM appointment_window.appointment_date
+            )::integer
+
+            AND weekly.appointment_time =
+              appointment_window.appointment_time
+
+            AND weekly.is_active = TRUE
+        )
+
+        OR EXISTS (
+          SELECT 1
+
+          FROM salon_schedule_overrides added
+
+          WHERE added.override_date =
+            appointment_window.appointment_date
+
+            AND added.appointment_time =
+              appointment_window.appointment_time
+
+            AND added.action = 'add'
+        )
+      ) AS is_scheduled,
+
+      EXISTS (
+        SELECT 1
+
+        FROM salon_schedule_overrides removed
+
+        WHERE removed.override_date =
+          appointment_window.appointment_date
+
+          AND removed.appointment_time =
+            appointment_window.appointment_time
+
+          AND removed.action = 'remove'
+      ) AS is_removed,
+
+      EXISTS (
+        SELECT 1
+
+        FROM salon_schedule_blocks block
+
+        WHERE block.block_date =
+          appointment_window.appointment_date
+
+          AND (
+            (
+              block.start_time IS NULL
+              AND block.end_time IS NULL
+            )
+
+            OR (
+              block.start_time IS NOT NULL
+              AND block.end_time IS NOT NULL
+
+              AND appointment_window.starts_at <
+                (
+                  (
+                    block.block_date +
+                    block.end_time
+                  )
+                  AT TIME ZONE 'America/New_York'
+                )
+
+              AND appointment_window.ends_at +
+                (
+                  ${BUFFER_MINUTES}::integer *
+                  INTERVAL '1 minute'
+                ) >
+                (
+                  (
+                    block.block_date +
+                    block.start_time
+                  )
+                  AT TIME ZONE 'America/New_York'
+                )
+            )
+          )
+      ) AS is_blocked,
+
+      EXISTS (
+        SELECT 1
+
+        FROM appointment_requests reserved
+
+        WHERE reserved.status IN (
+          'awaiting_deposit',
+          'confirmed'
+        )
+
+          AND reserved.starts_at IS NOT NULL
+          AND reserved.ends_at IS NOT NULL
+
+          AND reserved.starts_at <
+            appointment_window.ends_at +
+            (
+              ${BUFFER_MINUTES}::integer *
+              INTERVAL '1 minute'
+            )
+
+          AND reserved.ends_at +
+            (
+              ${BUFFER_MINUTES}::integer *
+              INTERVAL '1 minute'
+            ) > appointment_window.starts_at
+      ) AS has_reservation_conflict
+
+    FROM appointment_window
+  `;
+
+  if (!Array.isArray(result) || result.length !== 1) {
+    throw new Error(
+      'Could not verify the appointment schedule.'
+    );
+  }
+
+  const check = result[0] as ScheduleCheckRow;
+
+  if (!check.has_valid_local_time) {
+    throw new RequestValidationError(
+      'This appointment time is not valid. Please select another time.'
+    );
+  }
+
+  if (!check.has_enough_notice) {
+    throw new RequestValidationError(
+      'Appointments must be requested at least 24 hours in advance.'
+    );
+  }
+
+  if (!check.is_scheduled || check.is_removed) {
+    throw new RequestValidationError(
+      'This appointment time is not available on the salon schedule. Please choose another time.'
+    );
+  }
+
+  if (check.is_blocked) {
+    throw new RequestValidationError(
+      'The salon is unavailable during this appointment time. Please choose another time.'
+    );
+  }
+
+  if (check.has_reservation_conflict) {
+    throw new RequestValidationError(
+      'This appointment time is already reserved. Please choose another available time.'
+    );
+  }
 }
 
 /* =====================================
@@ -475,6 +692,16 @@ export default async function handler(
   req: any,
   res: any
 ) {
+  res.setHeader(
+    'Cache-Control',
+    'no-store'
+  );
+
+  res.setHeader(
+    'X-Content-Type-Options',
+    'nosniff'
+  );
+
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
 
@@ -482,11 +709,6 @@ export default async function handler(
       error: 'Method not allowed',
     });
   }
-
-  res.setHeader(
-    'Cache-Control',
-    'no-store'
-  );
 
   try {
     const rawBody = req.body;
@@ -536,21 +758,38 @@ export default async function handler(
     validateCustomerDetails(booking);
 
     const requestedServices =
-      parseRequestedServices(
-        rawBody.services
-      );
+      parseRequestedServices(rawBody.services);
 
     const sql = neon(databaseUrl);
 
-    // Never trust customer-submitted prices.
+    /* =====================================
+       VERIFY SERVICES AND PRICING
+
+       Never trust customer-submitted
+       service prices or durations.
+    ===================================== */
+
     const verified = await verifyServices(
       sql,
       requestedServices
     );
 
     booking.services = verified.items;
-    booking.totalPrice =
-      verified.totalPrice;
+    booking.totalPrice = verified.totalPrice;
+
+    /* =====================================
+       VERIFY LIVE APPOINTMENT AVAILABILITY
+
+       This happens before creating a
+       pending appointment or sending emails.
+    ===================================== */
+
+    await verifyAppointmentAvailability(
+      sql,
+      booking.appointmentDate,
+      booking.appointmentTime,
+      verified.durationMinutes
+    );
 
     /* =====================================
        GENERATE PRIVATE REVIEW LINK
@@ -559,17 +798,19 @@ export default async function handler(
     const { token, tokenHash } =
       createReviewToken();
 
-    const reviewTokenExpiresAt =
-      new Date(
-        Date.now() +
-          REVIEW_LINK_HOURS *
-            60 *
-            60 *
-            1000
-      );
+    const reviewTokenExpiresAt = new Date(
+      Date.now() +
+        REVIEW_LINK_HOURS *
+          60 *
+          60 *
+          1000
+    );
 
     /* =====================================
        SAVE VERIFIED REQUEST TO NEON
+
+       Pending requests do not reserve
+       the selected appointment time.
     ===================================== */
 
     const insertResult = await sql`
@@ -588,6 +829,7 @@ export default async function handler(
         review_token_hash,
         review_token_expires_at
       )
+
       VALUES (
         ${booking.customerName},
         ${booking.customerEmail},
@@ -603,6 +845,7 @@ export default async function handler(
         ${tokenHash},
         ${reviewTokenExpiresAt.toISOString()}
       )
+
       RETURNING id
     `;
 
@@ -642,8 +885,10 @@ export default async function handler(
       process.env.APP_URL?.trim() ||
       WEBSITE_URL;
 
-    const baseUrl =
-      configuredUrl.replace(/\/+$/, '');
+    const baseUrl = configuredUrl.replace(
+      /\/+$/,
+      ''
+    );
 
     const reviewUrl = new URL(
       '/api/review-appointment',
@@ -699,10 +944,9 @@ export default async function handler(
     const serviceTotal =
       verified.totalPrice.toFixed(2);
 
-    const servicesHtml =
-      buildServicesHtml(
-        verified.items
-      );
+    const servicesHtml = buildServicesHtml(
+      verified.items
+    );
 
     const safeReviewLink = escapeHtml(
       privateReviewLink
@@ -711,14 +955,12 @@ export default async function handler(
     const inspirationUrl =
       booking.inspirationUrl || '';
 
-    const safeInspirationUrl =
-      inspirationUrl
-        ? escapeHtml(inspirationUrl)
-        : '';
+    const safeInspirationUrl = inspirationUrl
+      ? escapeHtml(inspirationUrl)
+      : '';
 
-    const inspirationHtml =
-      safeInspirationUrl
-        ? `
+    const inspirationHtml = safeInspirationUrl
+      ? `
           <p>
             <a
               href="${safeInspirationUrl}"
@@ -728,241 +970,228 @@ export default async function handler(
             </a>
           </p>
         `
-        : '';
+      : '';
 
     /* =====================================
        OWNER EMAIL NOTIFICATION
     ===================================== */
 
-    const ownerEmailHtml =
-      buildEmailLayout(`
-        <h1 style="color:#963F60;">
-          New Appointment Request
-        </h1>
+    const ownerEmailHtml = buildEmailLayout(`
+      <h1 style="color:#963F60;">
+        New Appointment Request
+      </h1>
 
-        <p>
-          A client has submitted a new
-          appointment request through
-          InLoveNailz.
-        </p>
+      <p>
+        A client has submitted a new
+        appointment request through
+        InLoveNailz.
+      </p>
 
-        <p>
-          <strong>Request ID:</strong>
-          ${safeAppointmentId}
-        </p>
+      <p>
+        <strong>Request ID:</strong>
+        ${safeAppointmentId}
+      </p>
 
-        <h2 style="color:#963F60;">
-          Customer Information
-        </h2>
+      <h2 style="color:#963F60;">
+        Customer Information
+      </h2>
 
-        <p>
-          <strong>Name:</strong>
-          ${customerName}
-        </p>
+      <p>
+        <strong>Name:</strong>
+        ${customerName}
+      </p>
 
-        <p>
-          <strong>Email:</strong>
-          ${customerEmail}
-        </p>
+      <p>
+        <strong>Email:</strong>
+        ${customerEmail}
+      </p>
 
-        <p>
-          <strong>Phone:</strong>
-          ${customerPhone}
-        </p>
+      <p>
+        <strong>Phone:</strong>
+        ${customerPhone}
+      </p>
 
-        <h2 style="color:#963F60;">
-          Requested Appointment
-        </h2>
+      <h2 style="color:#963F60;">
+        Requested Appointment
+      </h2>
 
-        <p>
-          <strong>Date:</strong>
-          ${appointmentDate}
-        </p>
+      <p>
+        <strong>Date:</strong>
+        ${appointmentDate}
+      </p>
 
-        <p>
-          <strong>Time:</strong>
-          ${appointmentTime}
-        </p>
+      <p>
+        <strong>Time:</strong>
+        ${appointmentTime}
+      </p>
 
-        <h2 style="color:#963F60;">
-          Selected Services
-        </h2>
+      <h2 style="color:#963F60;">
+        Selected Services
+      </h2>
 
-        <ul>${servicesHtml}</ul>
+      <ul>${servicesHtml}</ul>
 
-        <p>
-          <strong>Service Total:</strong>
-          $${serviceTotal}
-        </p>
+      <p>
+        <strong>Service Total:</strong>
+        $${serviceTotal}
+      </p>
 
-        <p>
-          <strong>Estimated Duration:</strong>
-          ${verified.durationMinutes}
-          minutes
-        </p>
+      <p>
+        <strong>Estimated Duration:</strong>
+        ${verified.durationMinutes}
+        minutes
+      </p>
 
-        <h2 style="color:#963F60;">
-          Appointment Notes
-        </h2>
+      <h2 style="color:#963F60;">
+        Appointment Notes
+      </h2>
 
-        <p>${notes}</p>
+      <p>${notes}</p>
 
-        ${inspirationHtml}
+      ${inspirationHtml}
 
-        <hr style="
-          border:1px solid #EAC5D0;
-          margin:24px 0;
-        ">
+      <hr style="
+        border:1px solid #EAC5D0;
+        margin:24px 0;
+      ">
 
-        <h2 style="color:#963F60;">
-          Review Appointment
-        </h2>
+      <h2 style="color:#963F60;">
+        Review Appointment
+      </h2>
 
-        <p>
-          <strong>Status:</strong>
-          Pending Review
-        </p>
+      <p>
+        <strong>Status:</strong>
+        Pending Review
+      </p>
 
-        <p>
-          This request has been saved
-          to the InLoveNailz database.
-        </p>
+      <p>
+        This request has been saved
+        to the InLoveNailz database.
+      </p>
 
-        <p>
-          Use the private review link
-          when the approval system
-          is available.
-        </p>
+      <p>
+        Use the private review link
+        to review this appointment request.
+      </p>
 
-        <p style="margin:24px 0;">
-          <a
-            href="${safeReviewLink}"
-            style="
-              display:inline-block;
-              background:#963F60;
-              color:#FFFFFF;
-              padding:14px 24px;
-              border-radius:30px;
-              text-decoration:none;
-              font-weight:bold;
-            "
-          >
-            Review Appointment Request
-          </a>
-        </p>
+      <p style="margin:24px 0;">
+        <a
+          href="${safeReviewLink}"
+          style="
+            display:inline-block;
+            background:#963F60;
+            color:#FFFFFF;
+            padding:14px 24px;
+            border-radius:30px;
+            text-decoration:none;
+            font-weight:bold;
+          "
+        >
+          Review Appointment Request
+        </a>
+      </p>
 
-        <p style="
-          font-size:13px;
-          color:#806B75;
-        ">
-          This private review link
-          expires after
-          ${REVIEW_LINK_HOURS} hours.
-          Do not share it with customers.
-        </p>
-
-        <p style="
-          font-size:13px;
-          color:#806B75;
-        ">
-          The review page is being set up.
-          Until it is available, review
-          the request using the details
-          in this email.
-        </p>
-      `);
+      <p style="
+        font-size:13px;
+        color:#806B75;
+      ">
+        This private review link
+        expires after
+        ${REVIEW_LINK_HOURS} hours.
+        Do not share it with customers.
+      </p>
+    `);
 
     /* =====================================
        CUSTOMER EMAIL NOTIFICATION
     ===================================== */
 
-    const customerEmailHtml =
-      buildEmailLayout(`
-        <h1 style="color:#963F60;">
-          Appointment Request Received!
-        </h1>
+    const customerEmailHtml = buildEmailLayout(`
+      <h1 style="color:#963F60;">
+        Appointment Request Received!
+      </h1>
 
-        <p>Hi ${customerName},</p>
+      <p>Hi ${customerName},</p>
 
-        <p>
-          Thank you for choosing
-          InLoveNailz by Briana!
-        </p>
+      <p>
+        Thank you for choosing
+        InLoveNailz by Briana!
+      </p>
 
-        <p>
-          We have received your
-          appointment request.
-        </p>
+      <p>
+        We have received your
+        appointment request.
+      </p>
 
-        <p>
-          <strong>Request ID:</strong>
-          ${safeAppointmentId}
-        </p>
+      <p>
+        <strong>Request ID:</strong>
+        ${safeAppointmentId}
+      </p>
 
-        <h2 style="color:#963F60;">
-          Your Requested Appointment
-        </h2>
+      <h2 style="color:#963F60;">
+        Your Requested Appointment
+      </h2>
 
-        <p>
-          <strong>Date:</strong>
-          ${appointmentDate}
-        </p>
+      <p>
+        <strong>Date:</strong>
+        ${appointmentDate}
+      </p>
 
-        <p>
-          <strong>Time:</strong>
-          ${appointmentTime}
-        </p>
+      <p>
+        <strong>Time:</strong>
+        ${appointmentTime}
+      </p>
 
-        <h3>Your Services</h3>
+      <h3>Your Services</h3>
 
-        <ul>${servicesHtml}</ul>
+      <ul>${servicesHtml}</ul>
 
-        <p>
-          <strong>Service Total:</strong>
-          $${serviceTotal}
-        </p>
+      <p>
+        <strong>Service Total:</strong>
+        $${serviceTotal}
+      </p>
 
-        <p>
-          Briana will review your request
-          and email you with the required
-          deposit amount and next steps
-          if approved.
-        </p>
+      <p>
+        Briana will review your request
+        and email you with the required
+        deposit amount and next steps
+        if approved.
+      </p>
 
-        <p style="
-          background:#FFF7F8;
-          border:1px solid #EAC5D0;
-          border-radius:12px;
-          padding:16px;
-        ">
-          <strong>
-            Your appointment is not yet
-            confirmed.
-          </strong>
+      <p style="
+        background:#FFF7F8;
+        border:1px solid #EAC5D0;
+        border-radius:12px;
+        padding:16px;
+      ">
+        <strong>
+          Your appointment is not yet
+          confirmed.
+        </strong>
 
-          <br>
+        <br>
 
-          No payment is required to submit
-          your appointment request.
+        No payment is required to submit
+        your appointment request.
 
-          Your appointment will only be
-          confirmed after approval and
-          successful payment of the
-          required deposit.
-        </p>
+        Your appointment will only be
+        confirmed after approval and
+        successful payment of the
+        required deposit.
+      </p>
 
-        <p>
-          Thank you for supporting
-          InLoveNailz!
-        </p>
-      `);
+      <p>
+        Thank you for supporting
+        InLoveNailz!
+      </p>
+    `);
 
     /* =====================================
        SEND EMAIL NOTIFICATIONS
-    ===================================== */
 
-    // Request is already saved.
-    // Email failures do not undo it.
+       Request is already saved.
+       Email failures do not undo it.
+    ===================================== */
 
     try {
       await sendEmail(
@@ -1002,9 +1231,7 @@ export default async function handler(
         'Your appointment request has been received and is pending review.',
     });
   } catch (error: unknown) {
-    if (
-      error instanceof RequestValidationError
-    ) {
+    if (error instanceof RequestValidationError) {
       return res.status(400).json({
         error: error.message,
       });
