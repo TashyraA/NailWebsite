@@ -1,240 +1,438 @@
+
 import React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getAppointments } from '@/services/appointmentService';
 import { getServices } from '@/services/servicesData';
 import AdminLayout from '@/components/admin/AdminLayout';
 import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Calendar, DollarSign, Users, TrendingUp, RefreshCw } from 'lucide-react';
+import {
+  Calendar,
+  DollarSign,
+  Users,
+  TrendingUp,
+  RefreshCw,
+  ClipboardList,
+} from 'lucide-react';
 import { formatTime12Hour } from '@/utils/dateTime';
 
 const AdminDashboard = () => {
   const queryClient = useQueryClient();
-  
-  const { data: appointments = [], error: appointmentsError, isLoading: appointmentsLoading, refetch: refetchAppointments } = useQuery({
+
+  const {
+    data: appointments = [],
+    error: appointmentsError,
+    isLoading: appointmentsLoading,
+    refetch: refetchAppointments,
+  } = useQuery({
     queryKey: ['appointments'],
     queryFn: () => getAppointments(),
-    staleTime: 0, // Force fresh data
+    staleTime: 0,
     refetchOnWindowFocus: false,
   });
 
-  const { data: services = [], error: servicesError, isLoading: servicesLoading, refetch: refetchServices } = useQuery({
+  const {
+    data: services = [],
+    error: servicesError,
+    isLoading: servicesLoading,
+    refetch: refetchServices,
+  } = useQuery({
     queryKey: ['services'],
     queryFn: () => getServices(),
-    staleTime: 0, // Force fresh data  
+    staleTime: 0,
     refetchOnWindowFocus: false,
   });
 
-  // Manual refresh function
   const handleRefresh = () => {
-    console.log('Manual refresh triggered');
-    queryClient.invalidateQueries({ queryKey: ['appointments'] });
-    queryClient.invalidateQueries({ queryKey: ['services'] });
-    refetchAppointments();
-    refetchServices();
+    queryClient.invalidateQueries({
+      queryKey: ['appointments'],
+    });
+
+    queryClient.invalidateQueries({
+      queryKey: ['services'],
+    });
+
+    void refetchAppointments();
+    void refetchServices();
   };
 
-  // Debug logging with more detail
-  console.log('Dashboard - appointments data:', appointments);
-  console.log('Dashboard - appointments count:', appointments?.length);
-  console.log('Dashboard - appointments error:', appointmentsError);
-  console.log('Dashboard - appointments loading:', appointmentsLoading);
-  console.log('Dashboard - services data:', services);
-  console.log('Dashboard - services count:', services?.length);
-  console.log('Dashboard - services error:', servicesError);
-
-  // Only calculate stats when data is available to prevent flickering
   const stats = React.useMemo(() => {
-    console.log('Stats calculation - appointments:', appointments, 'loading:', appointmentsLoading);
-    
-    if (appointmentsLoading) {
-      // Return loading placeholders
-      return [
-        { title: 'Total Revenue', value: 'Loading...', icon: DollarSign, color: 'from-green-400 to-green-600' },
-        { title: 'Upcoming Appointments', value: 'Loading...', icon: Calendar, color: 'from-blue-400 to-blue-600' },
-        { title: 'Active Services', value: 'Loading...', icon: TrendingUp, color: 'from-pink-400 to-pink-600' },
-        { title: 'Total Bookings', value: 'Loading...', icon: Users, color: 'from-pink-400 to-pink-600' }
-      ];
-    }
+    const loadingValue = 'Loading...';
+    const errorValue = 'Error';
 
-    if (appointmentsError) {
-      console.error('Appointments error in stats:', appointmentsError);
-      return [
-        { title: 'Total Revenue', value: 'Error', icon: DollarSign, color: 'from-red-400 to-red-600' },
-        { title: 'Upcoming Appointments', value: 'Error', icon: Calendar, color: 'from-red-400 to-red-600' },
-        { title: 'Active Services', value: services?.length || 0, icon: TrendingUp, color: 'from-pink-400 to-pink-600' },
-        { title: 'Total Bookings', value: 'Error', icon: Users, color: 'from-red-400 to-red-600' }
-      ];
-    }
+    const today = new Date();
+    const todayString = [
+      today.getFullYear(),
+      String(today.getMonth() + 1).padStart(2, '0'),
+      String(today.getDate()).padStart(2, '0'),
+    ].join('-');
 
-    // Total revenue = all deposits paid + full payments when balance is $0
-    // This accounts for customers who have paid in full vs those who only paid deposits
-    const totalRevenue = appointments?.reduce((sum, apt) => {
-      console.log('Revenue calculation - apt:', apt, 'depositPaid:', apt.depositPaid, 'balanceDue:', apt.balanceDue, 'totalPrice:', apt.totalPrice, 'status:', apt.status);
-      // Include revenue from all non-cancelled appointments
-      if (apt.status !== 'cancelled') {
-        // If balance due is 0 or very small (< 0.01), customer has paid in full
-        if (apt.balanceDue <= 0.01) {
-          return sum + (apt.totalPrice || 0); // Count full payment
-        } else {
-          return sum + (apt.depositPaid || 0); // Count only deposit
-        }
-      }
-      return sum;
-    }, 0) || 0;
-    
-    // Upcoming appointments = pending + confirmed (not cancelled or completed)
-    const upcomingAppointments = appointments?.filter(apt => 
-      apt.status === 'pending' || apt.status === 'confirmed'
-    ).length || 0;
-    
-    // Total bookings = all appointments except cancelled
-    const totalBookings = appointments?.filter(apt => apt.status !== 'cancelled').length || 0;
-    
-    const activeServices = services?.length || 0;
+    // Count only deposits marked as paid
+    // in the new appointment database.
+    // Unpaid deposit amounts are not revenue.
+    const totalRevenue = appointmentsError
+      ? 0
+      : appointments.reduce((sum, apt) => {
+          if (!apt.depositPaidAt) {
+            return sum;
+          }
 
-    console.log('Final stats calculated:', { totalRevenue, upcomingAppointments, totalBookings, activeServices });
+          const amount = Number(apt.depositPaid || 0);
+
+          return sum + (
+            Number.isFinite(amount) && amount > 0
+              ? amount
+              : 0
+          );
+        }, 0);
+
+    // Requests Briana has not reviewed yet.
+    const pendingRequests = appointments.filter(
+      apt => apt.status === 'pending'
+    ).length;
+
+    // Future appointments with an assigned
+    // deposit or confirmed payment.
+    const upcomingAppointments = appointments.filter(
+      apt =>
+        (apt.status === 'awaiting_deposit' ||
+          apt.status === 'confirmed') &&
+        apt.appointmentDate >= todayString
+    ).length;
+
+    // Only confirmed appointments count
+    // as bookings, not pending requests.
+    const totalBookings = appointments.filter(
+      apt => apt.status === 'confirmed'
+    ).length;
+
+    const activeServices = services.filter(
+      service => service.isActive !== false
+    ).length;
+
+    const appointmentValue = (value: number) =>
+      appointmentsLoading
+        ? loadingValue
+        : appointmentsError
+          ? errorValue
+          : value;
 
     return [
       {
         title: 'Total Revenue',
-        value: `$${totalRevenue.toFixed(2)}`,
+        value: appointmentsLoading
+          ? loadingValue
+          : appointmentsError
+            ? errorValue
+            : `$${totalRevenue.toFixed(2)}`,
         icon: DollarSign,
-        color: 'from-green-400 to-green-600'
+        color: 'from-green-400 to-green-600',
+      },
+      {
+        title: 'Pending Requests',
+        value: appointmentValue(pendingRequests),
+        icon: ClipboardList,
+        color: 'from-yellow-400 to-orange-400',
       },
       {
         title: 'Upcoming Appointments',
-        value: upcomingAppointments,
+        value: appointmentValue(upcomingAppointments),
         icon: Calendar,
-        color: 'from-blue-400 to-blue-600'
+        color: 'from-blue-400 to-blue-600',
       },
       {
         title: 'Active Services',
-        value: activeServices,
+        value: servicesLoading
+          ? loadingValue
+          : servicesError
+            ? errorValue
+            : activeServices,
         icon: TrendingUp,
-        color: 'from-pink-400 to-pink-600'
+        color: 'from-pink-400 to-pink-600',
       },
       {
         title: 'Total Bookings',
-        value: totalBookings,
+        value: appointmentValue(totalBookings),
         icon: Users,
-        color: 'from-pink-400 to-pink-600'
-      }
+        color: 'from-purple-400 to-purple-600',
+      },
     ];
-  }, [appointments, services, appointmentsLoading, appointmentsError]);
+  }, [
+    appointments,
+    services,
+    appointmentsLoading,
+    appointmentsError,
+    servicesLoading,
+    servicesError,
+  ]);
+
+  const recentAppointments = React.useMemo(() => {
+    return [...appointments]
+      .sort((a, b) => {
+        const first = new Date(a.createdAt || 0).getTime();
+        const second = new Date(b.createdAt || 0).getTime();
+
+        return second - first;
+      })
+      .slice(0, 5);
+  }, [appointments]);
+
+  const getStatusClass = (status: string) => {
+    switch (status) {
+      case 'confirmed':
+        return 'bg-green-100 text-green-700';
+
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-700';
+
+      case 'awaiting_deposit':
+        return 'bg-blue-100 text-blue-700';
+
+      case 'declined':
+        return 'bg-red-100 text-red-700';
+
+      case 'cancelled':
+        return 'bg-gray-200 text-gray-700';
+
+      default:
+        return 'bg-gray-100 text-gray-700';
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return 'Pending Review';
+
+      case 'awaiting_deposit':
+        return 'Awaiting Deposit';
+
+      case 'confirmed':
+        return 'Confirmed';
+
+      case 'declined':
+        return 'Declined';
+
+      case 'cancelled':
+        return 'Cancelled';
+
+      default:
+        return status || 'Unknown';
+    }
+  };
 
   return (
     <AdminLayout>
       <div>
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-800">Dashboard Overview</h1>
+        {/* Dashboard Header */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8">
+          <h1 className="text-3xl font-bold text-gray-800">
+            Dashboard Overview
+          </h1>
+
           <button
             onClick={handleRefresh}
-            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             disabled={appointmentsLoading || servicesLoading}
           >
-            <RefreshCw className={`h-4 w-4 ${appointmentsLoading || servicesLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw
+              className={`h-4 w-4 ${
+                appointmentsLoading || servicesLoading
+                  ? 'animate-spin'
+                  : ''
+              }`}
+            />
+
             <span>Refresh Data</span>
           </button>
         </div>
 
+        {/* Loading State */}
         {(appointmentsLoading || servicesLoading) && (
           <div className="text-center py-8">
-            <p className="text-gray-600">Loading dashboard data...</p>
+            <p className="text-gray-600">
+              Loading dashboard data...
+            </p>
           </div>
         )}
 
+        {/* Appointment Error */}
         {appointmentsError && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-            <p className="text-red-700">Error loading appointments: {appointmentsError.message}</p>
+            <p className="text-red-700">
+              Error loading appointments:{' '}
+              {appointmentsError instanceof Error
+                ? appointmentsError.message
+                : 'Unknown error'}
+            </p>
           </div>
         )}
 
+        {/* Services Error */}
         {servicesError && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-            <p className="text-red-700">Error loading services: {servicesError.message}</p>
+            <p className="text-red-700">
+              Error loading services:{' '}
+              {servicesError instanceof Error
+                ? servicesError.message
+                : 'Unknown error'}
+            </p>
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {/* Dashboard Statistics */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-8">
           {stats.map((stat, index) => (
-            <Card key={index} className="p-6 hover:shadow-lg transition-shadow">
-              <div className="flex items-start justify-between">
+            <Card
+              key={index}
+              className="p-6 hover:shadow-lg transition-shadow"
+            >
+              <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">{stat.title}</p>
-                  <p className="text-3xl font-bold text-gray-800">{stat.value}</p>
+                  <p className="text-sm text-gray-600 mb-1">
+                    {stat.title}
+                  </p>
+
+                  <p className="text-3xl font-bold text-gray-800">
+                    {stat.value}
+                  </p>
                 </div>
-                <div className={`bg-gradient-to-br ${stat.color} p-3 rounded-xl`}>
-                  <stat.icon className="text-white" size={24} />
+
+                <div
+                  className={`bg-gradient-to-br ${stat.color} p-3 rounded-xl`}
+                >
+                  <stat.icon
+                    className="text-white"
+                    size={24}
+                  />
                 </div>
               </div>
             </Card>
           ))}
         </div>
 
+        {/* Dashboard Details */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Recent Appointments */}
           <Card className="p-6">
-            <h2 className="text-xl font-bold mb-4 text-gray-800">Recent Appointments</h2>
+            <h2 className="text-xl font-bold mb-4 text-gray-800">
+              Recent Appointments
+            </h2>
+
             {appointmentsLoading && (
-              <p className="text-gray-500 text-center py-4">Loading appointments...</p>
+              <p className="text-gray-500 text-center py-4">
+                Loading appointments...
+              </p>
             )}
-            {appointmentsError && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
-                <p className="text-red-700 text-sm">Error: {appointmentsError.message}</p>
-              </div>
-            )}
-            <div className="space-y-3">
-              {!appointmentsLoading && (!appointments || appointments.length === 0) && (
+
+            {!appointmentsLoading &&
+              !appointmentsError &&
+              recentAppointments.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
-                  <p className="mb-2">No appointments found</p>
-                  <p className="text-sm">Appointments will appear here once created</p>
-                  <p className="text-xs text-gray-400 mt-2">Debug: appointments array length = {appointments?.length || 0}</p>
+                  <p className="mb-2">
+                    No appointments found
+                  </p>
+
+                  <p className="text-sm">
+                    Appointment requests will appear here
+                    once submitted.
+                  </p>
                 </div>
               )}
-              {appointments && appointments.length > 0 && appointments.slice(0, 5).map(apt => (
-                <div key={apt.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div>
-                    <p className="font-medium text-gray-800">{apt.customerName || 'N/A'}</p>
-                    <p className="text-sm text-gray-600">
-                      {apt.appointmentDate || 'N/A'} at {apt.appointmentTime ? formatTime12Hour(apt.appointmentTime) : 'N/A'}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      Total: ${apt.totalPrice || 0} | Deposit: ${apt.depositPaid || 0} | Balance: ${apt.balanceDue || 0}
-                    </p>
+
+            <div className="space-y-3">
+              {!appointmentsLoading &&
+                !appointmentsError &&
+                recentAppointments.map(apt => (
+                  <div
+                    key={apt.id}
+                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 bg-gray-50 rounded-lg"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium text-gray-800">
+                        {apt.customerName || 'N/A'}
+                      </p>
+
+                      <p className="text-sm text-gray-600">
+                        {apt.appointmentDate || 'N/A'} at{' '}
+                        {apt.appointmentTime
+                          ? formatTime12Hour(
+                              apt.appointmentTime
+                            )
+                          : 'N/A'}
+                      </p>
+
+                      <p className="text-xs text-gray-500 mt-1">
+                        Total: $
+                        {Number(
+                          apt.totalPrice || 0
+                        ).toFixed(2)}
+                        {' | '}
+                        Deposit Paid: $
+                        {Number(
+                          apt.depositPaid || 0
+                        ).toFixed(2)}
+                        {' | '}
+                        Balance: $
+                        {Number(
+                          apt.balanceDue || 0
+                        ).toFixed(2)}
+                      </p>
+                    </div>
+
+                    <div className="sm:text-right shrink-0">
+                      <span
+                        className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusClass(
+                          apt.status
+                        )}`}
+                      >
+                        {getStatusLabel(apt.status)}
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      apt.status === 'confirmed' ? 'bg-green-100 text-green-700' :
-                      apt.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                      apt.status === 'completed' ? 'bg-blue-100 text-blue-700' :
-                      'bg-gray-100 text-gray-700'
-                    }`}>
-                      {apt.status}
-                    </span>
-                    <p className="text-xs text-gray-400 mt-1">ID: {apt.id}</p>
-                  </div>
-                </div>
-              ))}
+                ))}
             </div>
           </Card>
 
+          {/* Services Overview */}
           <Card className="p-6">
-            <h2 className="text-xl font-bold mb-4 text-gray-800">Services Overview</h2>
+            <h2 className="text-xl font-bold mb-4 text-gray-800">
+              Services Overview
+            </h2>
+
             <div className="space-y-3">
-              {!servicesLoading && services && services.length > 0 ? (
+              {!servicesLoading &&
+              !servicesError &&
+              services.length > 0 ? (
                 services.slice(0, 5).map(service => (
-                  <div key={service.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="font-medium text-gray-800">{service.title}</p>
-                      <p className="text-sm text-gray-600">{service.category}</p>
+                  <div
+                    key={service.id}
+                    className="flex items-center justify-between gap-3 p-3 bg-gray-50 rounded-lg"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium text-gray-800">
+                        {service.title}
+                      </p>
+
+                      <p className="text-sm text-gray-600">
+                        {service.category}
+                      </p>
                     </div>
-                    <span className="font-bold text-pink-600">${service.price}</span>
+
+                    <span className="font-bold text-pink-600 shrink-0">
+                      ${service.price}
+                    </span>
                   </div>
                 ))
-              ) : !servicesLoading ? (
+              ) : !servicesLoading &&
+                !servicesError ? (
                 <div className="text-center py-8 text-gray-500">
-                  <p className="mb-2">No services found</p>
-                  <p className="text-sm">Add services to get started</p>
+                  <p className="mb-2">
+                    No services found
+                  </p>
+
+                  <p className="text-sm">
+                    Add services to get started.
+                  </p>
                 </div>
               ) : null}
             </div>
