@@ -1,238 +1,887 @@
+
 import React from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getAppointments, updateAppointmentStatus } from '@/services/appointmentService';
+import { useQuery } from '@tanstack/react-query';
+
+import { getAppointments } from '@/services/appointmentService';
 import AdminLayout from '@/components/admin/AdminLayout';
 import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Calendar, Clock, Mail, Phone, DollarSign, CheckCircle2, AlertCircle } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
-import { formatDate, formatTime12Hour } from '@/utils/dateTime';
+
+import {
+  CalendarDays,
+  Clock3,
+  Mail,
+  Phone,
+  DollarSign,
+  ClipboardList,
+  Search,
+  Heart,
+  Scissors,
+  Image as ImageIcon,
+  MessageSquareText,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  UserRound,
+} from 'lucide-react';
+
+import {
+  formatDate,
+  formatTime12Hour,
+} from '@/utils/dateTime';
+
+type AppointmentStatus =
+  | 'pending'
+  | 'awaiting_deposit'
+  | 'confirmed'
+  | 'declined'
+  | 'cancelled'
+  | 'completed';
+
+type StatusFilter =
+  | 'all'
+  | 'pending'
+  | 'awaiting_deposit'
+  | 'confirmed'
+  | 'declined'
+  | 'cancelled';
+
+const currency = (value: unknown): string => {
+  const number = Number(value ?? 0);
+
+  return `$${(
+    Number.isFinite(number) ? number : 0
+  ).toFixed(2)}`;
+};
+
+const getStatusLabel = (status: string): string => {
+  switch (status) {
+    case 'pending':
+      return 'Pending Review';
+    case 'awaiting_deposit':
+      return 'Awaiting Deposit';
+    case 'confirmed':
+      return 'Confirmed';
+    case 'declined':
+      return 'Declined';
+    case 'cancelled':
+      return 'Cancelled';
+    case 'completed':
+      return 'Completed';
+    default:
+      return status || 'Unknown';
+  }
+};
+
+const getStatusClass = (status: string): string => {
+  switch (status) {
+    case 'pending':
+      return 'border-[#EBCF9D] bg-[#FFF8E9] text-[#91641E]';
+
+    case 'awaiting_deposit':
+      return 'border-[#D9D2ED] bg-[#F5F1FC] text-[#68538D]';
+
+    case 'confirmed':
+      return 'border-[#C7E4D2] bg-[#EFF9F2] text-[#397A53]';
+
+    case 'declined':
+      return 'border-[#F0C9D0] bg-[#FFF0F2] text-[#A5465B]';
+
+    case 'cancelled':
+      return 'border-[#E5DDE1] bg-[#F6F3F4] text-[#766C71]';
+
+    case 'completed':
+      return 'border-[#C9DDEA] bg-[#EFF7FC] text-[#42728F]';
+
+    default:
+      return 'border-[#E5DDE1] bg-[#F6F3F4] text-[#766C71]';
+  }
+};
+
+const formatAppointmentDate = (value: unknown) => {
+  if (!value) return 'Date unavailable';
+
+  try {
+    return formatDate(String(value));
+  } catch {
+    return String(value);
+  }
+};
+
+const formatAppointmentTime = (value: unknown) => {
+  if (!value) return 'Time unavailable';
+
+  try {
+    return formatTime12Hour(String(value));
+  } catch {
+    return String(value);
+  }
+};
 
 const AdminAppointments = () => {
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const [statusFilter, setStatusFilter] =
+    React.useState<StatusFilter>('all');
 
-  const { data: appointments = [] } = useQuery({
+  const {
+    data: appointments = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['appointments'],
-    queryFn: () => getAppointments(),
+    queryFn: getAppointments,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 
-  const updateStatusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: 'confirmed' | 'cancelled' | 'completed' }) =>
-      updateAppointmentStatus(id, status),
-    onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['appointments'] });
-      toast({ 
-        title: 'Appointment updated!',
-        description: `Status changed to ${variables.status}. Email sent to customer.`
-      });
+  const sortedAppointments = React.useMemo(() => {
+    return [...appointments].sort((first, second) => {
+      const firstCreated = new Date(
+        first.createdAt || 0
+      ).getTime();
+
+      const secondCreated = new Date(
+        second.createdAt || 0
+      ).getTime();
+
+      return secondCreated - firstCreated;
+    });
+  }, [appointments]);
+
+  const counts = React.useMemo(() => {
+    return {
+      all: appointments.length,
+      pending: appointments.filter(
+        appointment => appointment.status === 'pending'
+      ).length,
+      awaiting_deposit: appointments.filter(
+        appointment =>
+          appointment.status === 'awaiting_deposit'
+      ).length,
+      confirmed: appointments.filter(
+        appointment => appointment.status === 'confirmed'
+      ).length,
+      declined: appointments.filter(
+        appointment => appointment.status === 'declined'
+      ).length,
+      cancelled: appointments.filter(
+        appointment => appointment.status === 'cancelled'
+      ).length,
+    };
+  }, [appointments]);
+
+  const filteredAppointments = React.useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+
+    return sortedAppointments.filter(appointment => {
+      const matchesStatus =
+        statusFilter === 'all' ||
+        appointment.status === statusFilter;
+
+      const searchableText = [
+        appointment.customerName,
+        appointment.customerEmail,
+        appointment.customerPhone,
+        appointment.appointmentDate,
+        appointment.appointmentTime,
+        appointment.status,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      const matchesSearch =
+        !query || searchableText.includes(query);
+
+      return matchesStatus && matchesSearch;
+    });
+  }, [sortedAppointments, searchTerm, statusFilter]);
+
+  const filters: {
+    key: StatusFilter;
+    label: string;
+    count: number;
+  }[] = [
+    {
+      key: 'all',
+      label: 'All Requests',
+      count: counts.all,
     },
-    onError: (error) => {
-      toast({
-        title: 'Error',
-        description: 'Failed to update appointment',
-        variant: 'destructive'
-      });
-    }
-  });
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'confirmed':
-        return 'bg-green-100 text-green-700';
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-700';
-      case 'completed':
-        return 'bg-blue-100 text-blue-700';
-      case 'cancelled':
-        return 'bg-red-100 text-red-700';
-      default:
-        return 'bg-gray-100 text-gray-700';
-    }
-  };
+    {
+      key: 'pending',
+      label: 'Pending',
+      count: counts.pending,
+    },
+    {
+      key: 'awaiting_deposit',
+      label: 'Awaiting Deposit',
+      count: counts.awaiting_deposit,
+    },
+    {
+      key: 'confirmed',
+      label: 'Confirmed',
+      count: counts.confirmed,
+    },
+    {
+      key: 'declined',
+      label: 'Declined',
+      count: counts.declined,
+    },
+    {
+      key: 'cancelled',
+      label: 'Cancelled',
+      count: counts.cancelled,
+    },
+  ];
 
   return (
     <AdminLayout>
-      <div>
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold text-gray-800">Appointments</h1>
-          <Badge variant="outline" className="text-lg px-4 py-2">
-            Total: {appointments?.length || 0}
-          </Badge>
-        </div>
+      <div className="space-y-7">
+        {/* ===================================
+            PAGE HEADER
+        =================================== */}
 
-        <div className="space-y-4">
-          {appointments?.map(appointment => (
-            <Card key={appointment.id} className="p-6 hover:shadow-lg transition-shadow">
-              <div className="flex flex-col lg:flex-row gap-6">
-                <div className="flex-1">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h3 className="text-xl font-bold text-gray-800 mb-1">
-                        {appointment.customerName}
-                      </h3>
-                      <div className="flex flex-wrap gap-3 text-sm text-gray-600">
-                        <div className="flex items-center gap-1">
-                          <Mail size={16} className="text-pink-500" />
-                          <span>{appointment.customerEmail}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Phone size={16} className="text-pink-500" />
-                          <span>{appointment.customerPhone}</span>
-                        </div>
+        <section className="relative overflow-hidden rounded-2xl border border-[#F0DCE3] bg-white px-6 py-8 shadow-[0_5px_24px_rgba(41,37,43,0.035)] sm:px-8 sm:py-10">
+          <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-[#F7DDE4]/60 blur-3xl" />
+
+          <div className="relative z-10 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="mb-3 flex items-center gap-2">
+                <Heart
+                  size={15}
+                  className="text-[#963F60]"
+                />
+
+                <span className="brand-eyebrow">
+                  Studio Management
+                </span>
+              </div>
+
+              <h1 className="brand-heading text-[42px] text-[#29252B] sm:text-[52px]">
+                Appointment{' '}
+                <span className="brand-heading-accent">
+                  Requests
+                </span>
+              </h1>
+
+              <p className="mt-4 max-w-xl text-[13px] leading-7 text-[#786A72] sm:text-sm">
+                Keep every booking organized, review
+                customer details, and stay connected
+                with your clients.
+              </p>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-3 rounded-xl border border-[#EBCBD6] bg-[#FFF7F8] px-5 py-4">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-[#963F60]">
+                <ClipboardList size={21} />
+              </div>
+
+              <div>
+                <p className="font-heading text-[30px] leading-none text-[#29252B]">
+                  {isLoading ? '...' : counts.all}
+                </p>
+
+                <p className="mt-1 text-[11px] text-[#786A72]">
+                  Total Requests
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ===================================
+            PENDING REQUESTS NOTICE
+        =================================== */}
+
+        {!isLoading && !error && counts.pending > 0 && (
+          <section className="flex items-start gap-4 rounded-xl border border-[#EBCBD6] bg-[#FCECF1] px-5 py-4">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-[#963F60]">
+              <AlertCircle size={21} />
+            </div>
+
+            <div>
+              <p className="text-[13px] font-semibold text-[#963F60]">
+                {counts.pending}{' '}
+                {counts.pending === 1
+                  ? 'appointment needs'
+                  : 'appointments need'}{' '}
+                your attention
+              </p>
+
+              <p className="mt-1 text-xs leading-6 text-[#786A72]">
+                These requests are waiting for review.
+                Deposit approval and decline actions
+                will be available once the secure
+                approval workflow is connected.
+              </p>
+            </div>
+          </section>
+        )}
+
+        {/* ===================================
+            SEARCH AND FILTERS
+        =================================== */}
+
+        <section className="brand-card p-5 sm:p-6">
+          <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="brand-eyebrow mb-2">
+                Booking Directory
+              </p>
+
+              <h2 className="font-heading text-[29px] text-[#29252B]">
+                Manage Appointments
+              </h2>
+            </div>
+
+            <div className="relative w-full sm:max-w-[300px]">
+              <Search
+                size={17}
+                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#A28F98]"
+              />
+
+              <input
+                type="search"
+                aria-label="Search appointments"
+                placeholder="Search customer or date..."
+                value={searchTerm}
+                onChange={event =>
+                  setSearchTerm(event.target.value)
+                }
+                className="h-11 w-full rounded-lg border border-[#EBD8DF] bg-[#FFFBFC] pl-10 pr-4 text-[13px] text-[#29252B] outline-none transition-colors placeholder:text-[#A28F98] focus:border-[#963F60] focus:ring-2 focus:ring-[#963F60]/10"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {filters.map(filter => {
+              const active = statusFilter === filter.key;
+
+              return (
+                <button
+                  key={filter.key}
+                  type="button"
+                  onClick={() =>
+                    setStatusFilter(filter.key)
+                  }
+                  aria-pressed={active}
+                  className={`
+                    inline-flex min-h-10 items-center
+                    gap-2 rounded-lg border px-3.5 py-2
+                    text-[12px] font-semibold
+                    transition-colors
+                    ${
+                      active
+                        ? 'border-[#963F60] bg-[#963F60] text-white'
+                        : 'border-[#EBD8DF] bg-white text-[#786A72] hover:border-[#EFA1B7] hover:bg-[#FFF7F8] hover:text-[#963F60]'
+                    }
+                  `}
+                >
+                  {filter.label}
+
+                  <span
+                    className={`
+                      rounded-md px-1.5 py-0.5
+                      text-[10px]
+                      ${
+                        active
+                          ? 'bg-white/20 text-white'
+                          : 'bg-[#F7DDE4]/60 text-[#963F60]'
+                      }
+                    `}
+                  >
+                    {filter.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* ===================================
+            LOADING / ERROR
+        =================================== */}
+
+        {isLoading && (
+          <div
+            role="status"
+            className="brand-card flex items-center justify-center gap-3 px-6 py-12 text-sm text-[#786A72]"
+          >
+            <Loader2
+              size={20}
+              className="animate-spin text-[#963F60]"
+            />
+            Loading appointments...
+          </div>
+        )}
+
+        {error && (
+          <div
+            role="alert"
+            className="rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700"
+          >
+            Unable to load appointments:{' '}
+            {error instanceof Error
+              ? error.message
+              : 'Please try again later.'}
+          </div>
+        )}
+
+        {/* ===================================
+            APPOINTMENT CARDS
+        =================================== */}
+
+        {!isLoading && !error && (
+          <div className="space-y-5">
+            {filteredAppointments.map(appointment => {
+              const totalPrice = Number(
+                appointment.totalPrice || 0
+              );
+
+              const depositPaid = appointment.depositPaidAt
+                ? Number(appointment.depositPaid || 0)
+                : 0;
+
+              const balanceDue = Math.max(
+                0,
+                totalPrice - depositPaid
+              );
+
+              const hasPaidDeposit =
+                Boolean(appointment.depositPaidAt) &&
+                depositPaid > 0;
+
+              const services = Array.isArray(
+                appointment.services
+              )
+                ? appointment.services
+                : [];
+
+              return (
+                <Card
+                  key={appointment.id}
+                  className="brand-card overflow-hidden p-0"
+                >
+                  {/* CARD HEADER */}
+
+                  <div className="flex flex-col gap-4 border-b border-[#F2E5E9] bg-[#FFFBFC] px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#F7DDE4]/70 text-[#963F60]">
+                        <UserRound
+                          size={22}
+                          strokeWidth={1.7}
+                        />
+                      </div>
+
+                      <div className="min-w-0">
+                        <h3 className="font-heading text-[29px] leading-tight text-[#29252B]">
+                          {appointment.customerName ||
+                            'Customer'}
+                        </h3>
+
+                        <p className="mt-1 text-xs text-[#96858E]">
+                          Appointment Request
+                        </p>
                       </div>
                     </div>
-                    <Badge className={getStatusColor(appointment.status)}>
-                      {appointment.status}
-                    </Badge>
+
+                    <span
+                      className={`inline-flex self-start rounded-full border px-3 py-1.5 text-[11px] font-semibold ${getStatusClass(
+                        appointment.status
+                      )}`}
+                    >
+                      {getStatusLabel(
+                        appointment.status
+                      )}
+                    </span>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div className="flex items-center gap-2 text-gray-700">
-                      <Calendar size={18} className="text-pink-500" />
-                      <span className="font-medium">
-                        {formatDate(appointment.appointmentDate)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-gray-700">
-                      <Clock size={18} className="text-pink-500" />
-                      <span className="font-medium">{formatTime12Hour(appointment.appointmentTime)}</span>
-                    </div>
-                  </div>
+                  {/* MAIN CONTENT */}
 
-                  <div className="mb-4">
-                    <h4 className="font-semibold text-gray-800 mb-2">Services:</h4>
-                    <div className="flex flex-wrap gap-3">
-                      {(appointment.services || []).map((item: any, idx: number) => {
-                        // Handle both CartItem format {service: {...}} and direct Service format
-                        const service = item.service || item;
-                        const imageUrl = service.images?.[0] || service.image;
-                        return (
-                          <div key={idx} className="flex items-center gap-2 bg-pink-50 rounded-lg p-2 border border-pink-200">
-                            {imageUrl && (
-                              <img 
-                                src={imageUrl} 
-                                alt={service.title || 'Service'} 
-                                className="w-10 h-10 rounded object-cover"
+                  <div className="grid grid-cols-1 gap-6 p-5 lg:grid-cols-[minmax(0,1fr)_280px] sm:p-6">
+                    <div className="min-w-0 space-y-6">
+                      {/* DATE AND TIME */}
+
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="flex items-center gap-3 rounded-xl border border-[#F2E5E9] bg-[#FFF7F8] p-4">
+                          <CalendarDays
+                            size={20}
+                            className="shrink-0 text-[#963F60]"
+                          />
+
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#96858E]">
+                              Appointment Date
+                            </p>
+
+                            <p className="mt-1 text-[13px] font-semibold text-[#29252B]">
+                              {formatAppointmentDate(
+                                appointment.appointmentDate
+                              )}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 rounded-xl border border-[#F2E5E9] bg-[#FFF7F8] p-4">
+                          <Clock3
+                            size={20}
+                            className="shrink-0 text-[#963F60]"
+                          />
+
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#96858E]">
+                              Appointment Time
+                            </p>
+
+                            <p className="mt-1 text-[13px] font-semibold text-[#29252B]">
+                              {formatAppointmentTime(
+                                appointment.appointmentTime
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CUSTOMER CONTACT */}
+
+                      <div>
+                        <p className="brand-eyebrow mb-3">
+                          Customer Information
+                        </p>
+
+                        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-x-6">
+                          {appointment.customerEmail && (
+                            <a
+                              href={`mailto:${appointment.customerEmail}`}
+                              className="inline-flex min-w-0 items-center gap-2 text-[12px] text-[#786A72] hover:text-[#963F60]"
+                            >
+                              <Mail
+                                size={16}
+                                className="shrink-0 text-[#963F60]"
                               />
-                            )}
-                            <div>
-                              <p className="font-medium text-sm text-gray-800">{service.title || 'Unknown Service'}</p>
-                              <p className="text-xs text-pink-600">${service.price || 0}</p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
 
-                  {appointment.notes && (
-                    <div className="mb-4">
-                      <h4 className="font-semibold text-gray-800 mb-1">Notes:</h4>
-                      <p className="text-gray-600 text-sm">{appointment.notes}</p>
-                    </div>
-                  )}
-                </div>
+                              <span className="break-all">
+                                {appointment.customerEmail}
+                              </span>
+                            </a>
+                          )}
 
-                <div className="lg:w-64 space-y-4">
-                  <Card className="p-4 bg-gradient-to-br from-pink-50 to-purple-50">
-                    <div className="flex items-center gap-2 mb-3">
-                      <DollarSign className="text-pink-600" size={20} />
-                      <h4 className="font-semibold text-gray-800">Payment</h4>
-                    </div>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Total:</span>
-                        <span className="font-semibold">${(appointment.totalPrice || 0).toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between text-green-600">
-                        <span>Deposit Paid:</span>
-                        <span className="font-semibold">${(appointment.depositPaid || 0).toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className={appointment.balancePaidAt ? 'text-green-600' : 'text-pink-600'}>
-                          Balance:
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <span className={`font-bold ${appointment.balancePaidAt ? 'text-green-600' : 'text-pink-600'}`}>
-                            ${(appointment.balanceDue || 0).toFixed(2)}
-                          </span>
-                          {appointment.balancePaidAt ? (
-                            <CheckCircle2 className="text-green-600" size={16} />
-                          ) : appointment.balanceDue > 0 ? (
-                            <AlertCircle className="text-pink-600" size={16} />
-                          ) : null}
+                          {appointment.customerPhone && (
+                            <a
+                              href={`tel:${appointment.customerPhone}`}
+                              className="inline-flex items-center gap-2 text-[12px] text-[#786A72] hover:text-[#963F60]"
+                            >
+                              <Phone
+                                size={16}
+                                className="shrink-0 text-[#963F60]"
+                              />
+
+                              {appointment.customerPhone}
+                            </a>
+                          )}
                         </div>
                       </div>
-                      {appointment.balancePaidAt && (
-                        <div className="mt-3 pt-2 border-t border-pink-200">
-                          <div className="text-xs text-gray-500">
-                            <div>Balance paid: {new Date(appointment.balancePaidAt).toLocaleDateString()}</div>
-                            <div>Method: {appointment.balancePaymentMethod || 'Stripe'}</div>
+
+                      {/* SERVICES */}
+
+                      <div>
+                        <p className="brand-eyebrow mb-3">
+                          Selected Services
+                        </p>
+
+                        {services.length === 0 ? (
+                          <p className="text-xs text-[#96858E]">
+                            No services listed.
+                          </p>
+                        ) : (
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            {services.map(
+                              (item: any, index: number) => {
+                                const service =
+                                  item?.service || item;
+
+                                const imageUrl =
+                                  service?.images?.[0] ||
+                                  service?.image;
+
+                                const title =
+                                  service?.title ||
+                                  service?.name ||
+                                  'Nail Service';
+
+                                const price =
+                                  service?.price ??
+                                  item?.price ??
+                                  0;
+
+                                return (
+                                  <div
+                                    key={index}
+                                    className="flex items-center gap-3 rounded-xl border border-[#F2E5E9] bg-white p-3"
+                                  >
+                                    {imageUrl ? (
+                                      <img
+                                        src={imageUrl}
+                                        alt={title}
+                                        loading="lazy"
+                                        className="h-14 w-14 shrink-0 rounded-lg bg-[#FFF7F8] object-cover"
+                                      />
+                                    ) : (
+                                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-[#FFF7F8] text-[#963F60]">
+                                        <Scissors size={21} />
+                                      </div>
+                                    )}
+
+                                    <div className="min-w-0">
+                                      <p className="text-[12px] font-semibold leading-5 text-[#29252B]">
+                                        {title}
+                                      </p>
+
+                                      <p className="mt-1 text-xs font-semibold text-[#963F60]">
+                                        {currency(price)}
+                                      </p>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                            )}
                           </div>
+                        )}
+                      </div>
+
+                      {/* NOTES */}
+
+                      {appointment.notes && (
+                        <div className="rounded-xl border border-[#F2E5E9] bg-[#FFFBFC] p-4">
+                          <div className="mb-2 flex items-center gap-2">
+                            <MessageSquareText
+                              size={16}
+                              className="text-[#963F60]"
+                            />
+
+                            <p className="text-[12px] font-semibold text-[#29252B]">
+                              Customer Notes
+                            </p>
+                          </div>
+
+                          <p className="whitespace-pre-wrap break-words text-[12px] leading-6 text-[#786A72]">
+                            {appointment.notes}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* INSPIRATION PHOTO */}
+
+                      {appointment.inspirationUrl && (
+                        <div>
+                          <div className="mb-3 flex items-center gap-2">
+                            <ImageIcon
+                              size={16}
+                              className="text-[#963F60]"
+                            />
+
+                            <p className="text-[12px] font-semibold text-[#29252B]">
+                              Inspiration Photo
+                            </p>
+                          </div>
+
+                          <a
+                            href={appointment.inspirationUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-block overflow-hidden rounded-xl border border-[#F2E5E9] bg-[#FFF7F8]"
+                          >
+                            <img
+                              src={appointment.inspirationUrl}
+                              alt="Customer nail inspiration"
+                              loading="lazy"
+                              className="h-36 w-36 object-contain"
+                            />
+                          </a>
                         </div>
                       )}
                     </div>
-                  </Card>
 
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-gray-700">Update Status:</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          updateStatusMutation.mutate({
-                            id: appointment.id,
-                            status: 'confirmed'
-                          })
-                        }
-                        className="text-green-600 hover:bg-green-50"
-                      >
-                        Confirm
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          updateStatusMutation.mutate({
-                            id: appointment.id,
-                            status: 'completed'
-                          })
-                        }
-                        className="text-blue-600 hover:bg-blue-50"
-                      >
-                        Complete
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          updateStatusMutation.mutate({
-                            id: appointment.id,
-                            status: 'cancelled'
-                          })
-                        }
-                        className="text-red-600 hover:bg-red-50"
-                      >
-                        Cancel
-                      </Button>
+                    {/* PAYMENT SUMMARY */}
+
+                    <div className="space-y-4">
+                      <div className="overflow-hidden rounded-xl border border-[#EBCBD6] bg-[#FFF7F8]">
+                        <div className="border-b border-[#EBCBD6] bg-[#F7DDE4]/55 px-5 py-4">
+                          <div className="flex items-center gap-2">
+                            <DollarSign
+                              size={18}
+                              className="text-[#963F60]"
+                            />
+
+                            <h4 className="text-[13px] font-semibold text-[#29252B]">
+                              Payment Summary
+                            </h4>
+                          </div>
+                        </div>
+
+                        <div className="space-y-4 p-5">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs text-[#786A72]">
+                              Service Total
+                            </span>
+
+                            <span className="text-[13px] font-semibold text-[#29252B]">
+                              {currency(totalPrice)}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs text-[#786A72]">
+                              Deposit Requested
+                            </span>
+
+                            <span className="text-[13px] font-semibold text-[#29252B]">
+                              {appointment.depositAmount != null
+                                ? currency(
+                                    appointment.depositAmount
+                                  )
+                                : 'Not Set'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs text-[#786A72]">
+                              Deposit Paid
+                            </span>
+
+                            <span className="text-[13px] font-semibold text-[#397A53]">
+                              {currency(depositPaid)}
+                            </span>
+                          </div>
+
+                          <div className="border-t border-[#EBCBD6] pt-4">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-xs font-semibold text-[#29252B]">
+                                Remaining Balance
+                              </span>
+
+                              <span className="font-heading text-[25px] font-semibold text-[#963F60]">
+                                {currency(balanceDue)}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div
+                            className={`flex items-start gap-2 rounded-lg p-3 ${
+                              hasPaidDeposit
+                                ? 'bg-[#EFF9F2]'
+                                : 'bg-white'
+                            }`}
+                          >
+                            {hasPaidDeposit ? (
+                              <CheckCircle2
+                                size={17}
+                                className="mt-0.5 shrink-0 text-[#397A53]"
+                              />
+                            ) : (
+                              <Clock3
+                                size={17}
+                                className="mt-0.5 shrink-0 text-[#963F60]"
+                              />
+                            )}
+
+                            <p
+                              className={`text-[11px] leading-5 ${
+                                hasPaidDeposit
+                                  ? 'text-[#397A53]'
+                                  : 'text-[#786A72]'
+                              }`}
+                            >
+                              {hasPaidDeposit
+                                ? 'Deposit payment recorded.'
+                                : appointment.status ===
+                                    'awaiting_deposit'
+                                  ? 'Waiting for the customer to pay the requested deposit.'
+                                  : 'No deposit payment has been recorded.'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CURRENT REQUEST STATUS */}
+
+                      <div className="rounded-xl border border-[#F2E5E9] bg-white p-4">
+                        <p className="brand-eyebrow mb-2">
+                          Request Status
+                        </p>
+
+                        <span
+                          className={`inline-flex rounded-full border px-3 py-1.5 text-[11px] font-semibold ${getStatusClass(
+                            appointment.status
+                          )}`}
+                        >
+                          {getStatusLabel(
+                            appointment.status
+                          )}
+                        </span>
+
+                        <p className="mt-3 text-[11px] leading-5 text-[#96858E]">
+                          {appointment.status === 'pending'
+                            ? 'This request is waiting for administrator review.'
+                            : appointment.status ===
+                                'awaiting_deposit'
+                              ? 'A deposit is required before this booking can be confirmed.'
+                              : appointment.status ===
+                                  'confirmed'
+                                ? 'This appointment is confirmed.'
+                                : appointment.status ===
+                                    'declined'
+                                  ? 'This appointment request was declined.'
+                                  : appointment.status ===
+                                      'cancelled'
+                                    ? 'This appointment was cancelled.'
+                                    : 'Appointment information is available above.'}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            </Card>
-          ))}
+                </Card>
+              );
+            })}
 
-          {appointments?.length === 0 && (
-            <Card className="p-12 text-center">
-              <Calendar className="mx-auto text-gray-300 mb-4" size={64} />
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">No appointments yet</h3>
-              <p className="text-gray-500">Appointments will appear here when customers book services</p>
-            </Card>
-          )}
-        </div>
+            {/* EMPTY RESULTS */}
+
+            {filteredAppointments.length === 0 && (
+              <div className="brand-card flex flex-col items-center px-6 py-14 text-center">
+                <CalendarDays
+                  size={34}
+                  strokeWidth={1.5}
+                  className="mb-4 text-[#EFA1B7]"
+                />
+
+                <h3 className="font-heading text-[29px] text-[#29252B]">
+                  {appointments.length === 0
+                    ? 'No Appointments Yet'
+                    : 'No Matching Appointments'}
+                </h3>
+
+                <p className="mt-2 max-w-sm text-xs leading-6 text-[#96858E]">
+                  {appointments.length === 0
+                    ? 'New customer appointment requests will appear here when submitted.'
+                    : 'Try changing your search or selecting another status filter.'}
+                </p>
+
+                {appointments.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchTerm('');
+                      setStatusFilter('all');
+                    }}
+                    className="mt-5 inline-flex min-h-10 items-center justify-center rounded-lg border border-[#963F60] px-5 py-2 text-xs font-semibold text-[#963F60] transition-colors hover:bg-[#F7DDE4]"
+                  >
+                    Clear Filters
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </AdminLayout>
   );
