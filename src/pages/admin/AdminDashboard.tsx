@@ -251,12 +251,6 @@ const AdminDashboard = () => {
                   Briana.
                 </span>
               </h1>
-
-              <p className="mt-5 max-w-lg text-[13px] leading-7 text-[#786A72] sm:text-sm">
-                Everything you need to manage your
-                appointments, services, and studio
-                activity — all in one beautiful place.
-              </p>
             </div>
 
             <div className="flex shrink-0 items-center gap-3 self-start rounded-xl border border-[#F0DCE3] bg-[#FFF7F8] px-4 py-3">

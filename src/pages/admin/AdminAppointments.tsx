@@ -29,14 +29,6 @@ import {
   formatTime12Hour,
 } from '@/utils/dateTime';
 
-type AppointmentStatus =
-  | 'pending'
-  | 'awaiting_deposit'
-  | 'confirmed'
-  | 'declined'
-  | 'cancelled'
-  | 'completed';
-
 type StatusFilter =
   | 'all'
   | 'pending'
@@ -76,22 +68,16 @@ const getStatusClass = (status: string): string => {
   switch (status) {
     case 'pending':
       return 'border-[#EBCF9D] bg-[#FFF8E9] text-[#91641E]';
-
     case 'awaiting_deposit':
       return 'border-[#D9D2ED] bg-[#F5F1FC] text-[#68538D]';
-
     case 'confirmed':
       return 'border-[#C7E4D2] bg-[#EFF9F2] text-[#397A53]';
-
     case 'declined':
       return 'border-[#F0C9D0] bg-[#FFF0F2] text-[#A5465B]';
-
     case 'cancelled':
       return 'border-[#E5DDE1] bg-[#F6F3F4] text-[#766C71]';
-
     case 'completed':
       return 'border-[#C9DDEA] bg-[#EFF7FC] text-[#42728F]';
-
     default:
       return 'border-[#E5DDE1] bg-[#F6F3F4] text-[#766C71]';
   }
@@ -237,9 +223,7 @@ const AdminAppointments = () => {
   return (
     <AdminLayout>
       <div className="space-y-7">
-        {/* ===================================
-            PAGE HEADER
-        =================================== */}
+        {/* PAGE HEADER */}
 
         <section className="relative overflow-hidden rounded-2xl border border-[#F0DCE3] bg-white px-6 py-8 shadow-[0_5px_24px_rgba(41,37,43,0.035)] sm:px-8 sm:py-10">
           <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-[#F7DDE4]/60 blur-3xl" />
@@ -263,12 +247,6 @@ const AdminAppointments = () => {
                   Requests
                 </span>
               </h1>
-
-              <p className="mt-4 max-w-xl text-[13px] leading-7 text-[#786A72] sm:text-sm">
-                Keep every booking organized, review
-                customer details, and stay connected
-                with your clients.
-              </p>
             </div>
 
             <div className="flex shrink-0 items-center gap-3 rounded-xl border border-[#EBCBD6] bg-[#FFF7F8] px-5 py-4">
@@ -289,38 +267,25 @@ const AdminAppointments = () => {
           </div>
         </section>
 
-        {/* ===================================
-            PENDING REQUESTS NOTICE
-        =================================== */}
+        {/* PENDING REQUESTS NOTICE */}
 
         {!isLoading && !error && counts.pending > 0 && (
-          <section className="flex items-start gap-4 rounded-xl border border-[#EBCBD6] bg-[#FCECF1] px-5 py-4">
+          <section className="flex items-center gap-4 rounded-xl border border-[#EBCBD6] bg-[#FCECF1] px-5 py-4">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-[#963F60]">
               <AlertCircle size={21} />
             </div>
 
-            <div>
-              <p className="text-[13px] font-semibold text-[#963F60]">
-                {counts.pending}{' '}
-                {counts.pending === 1
-                  ? 'appointment needs'
-                  : 'appointments need'}{' '}
-                your attention
-              </p>
-
-              <p className="mt-1 text-xs leading-6 text-[#786A72]">
-                These requests are waiting for review.
-                Deposit approval and decline actions
-                will be available once the secure
-                approval workflow is connected.
-              </p>
-            </div>
+            <p className="text-[13px] font-semibold text-[#963F60]">
+              {counts.pending}{' '}
+              {counts.pending === 1
+                ? 'appointment needs'
+                : 'appointments need'}{' '}
+              your attention
+            </p>
           </section>
         )}
 
-        {/* ===================================
-            SEARCH AND FILTERS
-        =================================== */}
+        {/* SEARCH AND FILTERS */}
 
         <section className="brand-card p-5 sm:p-6">
           <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -398,9 +363,7 @@ const AdminAppointments = () => {
           </div>
         </section>
 
-        {/* ===================================
-            LOADING / ERROR
-        =================================== */}
+        {/* LOADING / ERROR */}
 
         {isLoading && (
           <div
@@ -427,9 +390,7 @@ const AdminAppointments = () => {
           </div>
         )}
 
-        {/* ===================================
-            APPOINTMENT CARDS
-        =================================== */}
+        {/* APPOINTMENT CARDS */}
 
         {!isLoading && !error && (
           <div className="space-y-5">

@@ -25,6 +25,7 @@ import {
   X,
   Loader2,
   RefreshCw,
+  Scissors,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { Service } from '@/types';
@@ -61,6 +62,20 @@ const emptyForm = (): ServiceForm => ({
   category: '',
   isActive: true,
 });
+
+const primaryButtonClass =
+  'bg-[#963F60] text-white hover:bg-[#79324F] ' +
+  'border border-[#963F60] shadow-sm ' +
+  'transition-colors disabled:opacity-50';
+
+const outlineButtonClass =
+  'border border-[#E4BFCB] bg-white text-[#963F60] ' +
+  'hover:border-[#963F60] hover:bg-[#FFF0F4] ' +
+  'hover:text-[#79324F] transition-colors';
+
+const inputClass =
+  'border-[#EBD8DF] bg-[#FFFBFC] text-[#29252B] ' +
+  'focus-visible:ring-[#EFA1B7]';
 
 async function apiRequest<T>(
   url: string,
@@ -464,30 +479,57 @@ const AdminServices: React.FC = () => {
 
   return (
     <AdminLayout>
-      <div>
-        <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
-          <h1 className="text-3xl font-bold text-gray-800">
-            Manage Services
-          </h1>
+      <div className="space-y-7">
+        {/* PAGE HEADER */}
 
-          <Button
-            onClick={handleAdd}
-            className="bg-gradient-to-r from-pink-500 to-pink-700 text-white hover:from-pink-600 hover:to-pink-800"
-          >
-            <Plus className="mr-2" size={20} />
-            Add Service
-          </Button>
-        </div>
+        <section className="relative overflow-hidden rounded-2xl border border-[#F0DCE3] bg-white px-6 py-8 shadow-[0_5px_24px_rgba(41,37,43,0.035)] sm:px-8 sm:py-10">
+          <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-[#F7DDE4]/60 blur-3xl" />
+
+          <div className="relative z-10 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="mb-3 flex items-center gap-2">
+                <Scissors
+                  size={16}
+                  className="text-[#963F60]"
+                />
+
+                <span className="brand-eyebrow">
+                  Your Nail Menu
+                </span>
+              </div>
+
+              <h1 className="brand-heading text-[42px] text-[#29252B] sm:text-[52px]">
+                Manage{' '}
+                <span className="brand-heading-accent">
+                  Services
+                </span>
+              </h1>
+            </div>
+
+            <Button
+              type="button"
+              onClick={handleAdd}
+              className={`min-h-11 rounded-lg px-5 text-[12px] font-semibold ${primaryButtonClass}`}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add Service
+            </Button>
+          </div>
+        </section>
+
+        {/* LOADING STATE */}
 
         {isLoading && (
-          <div className="flex items-center justify-center gap-3 rounded-xl border border-pink-100 bg-white p-10 text-gray-600">
+          <div className="brand-card flex items-center justify-center gap-3 p-10 text-sm text-[#786A72]">
             <Loader2
-              className="animate-spin text-pink-500"
+              className="animate-spin text-[#963F60]"
               size={22}
             />
             Loading services from Neon...
           </div>
         )}
+
+        {/* ERROR STATE */}
 
         {isError && !isLoading && (
           <div className="rounded-xl border border-red-200 bg-white p-6">
@@ -495,7 +537,7 @@ const AdminServices: React.FC = () => {
               Unable to load services
             </p>
 
-            <p className="mt-2 text-sm text-gray-600">
+            <p className="mt-2 text-sm text-[#786A72]">
               {error instanceof Error
                 ? error.message
                 : 'Please try again.'}
@@ -504,7 +546,7 @@ const AdminServices: React.FC = () => {
             <Button
               type="button"
               variant="outline"
-              className="mt-4"
+              className={`mt-4 rounded-lg ${outlineButtonClass}`}
               disabled={isFetching}
               onClick={() => void refetch()}
             >
@@ -518,47 +560,58 @@ const AdminServices: React.FC = () => {
           </div>
         )}
 
+        {/* EMPTY STATE */}
+
         {!isLoading && !isError && services.length === 0 && (
-          <div className="rounded-xl border border-pink-100 bg-white p-10 text-center">
-            <p className="text-gray-600">
-              No services found in Neon.
-            </p>
-            <p className="mt-2 text-sm text-gray-500">
+          <div className="brand-card p-10 text-center">
+            <Scissors
+              size={32}
+              className="mx-auto mb-3 text-[#EFA1B7]"
+            />
+
+            <h2 className="font-heading text-[28px] text-[#29252B]">
+              No Services Yet
+            </h2>
+
+            <p className="mt-2 text-sm text-[#786A72]">
               Click Add Service to create your first service.
             </p>
           </div>
         )}
 
+        {/* SERVICE CARDS */}
+
         {!isLoading && !isError && services.length > 0 && (
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
             {services.map(service => (
               <Card
                 key={service.id}
-                className="overflow-hidden transition-shadow hover:shadow-lg"
+                className="brand-card overflow-hidden p-0 transition-shadow hover:shadow-[0_10px_30px_rgba(41,37,43,0.07)]"
               >
                 {service.images?.[0] ? (
                   <img
                     src={service.images[0]}
                     alt={service.title}
-                    className="h-48 w-full bg-pink-50 object-contain"
+                    loading="lazy"
+                    className="h-48 w-full bg-[#FFF7F8] object-contain"
                   />
                 ) : (
-                  <div className="flex h-48 items-center justify-center bg-pink-50 text-sm text-gray-500">
+                  <div className="flex h-48 items-center justify-center bg-[#FFF7F8] text-sm text-[#96858E]">
                     No image
                   </div>
                 )}
 
-                <div className="p-4">
-                  <div className="mb-2 flex items-start justify-between gap-2">
-                    <h3 className="text-lg font-bold text-gray-800">
+                <div className="p-5">
+                  <div className="mb-3 flex items-start justify-between gap-2">
+                    <h3 className="font-heading text-[25px] leading-tight text-[#29252B]">
                       {service.title}
                     </h3>
 
                     <span
-                      className={`shrink-0 rounded px-2 py-1 text-xs ${
+                      className={`shrink-0 rounded-full border px-3 py-1 text-[10px] font-semibold ${
                         service.isActive
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-gray-100 text-gray-700'
+                          ? 'border-[#C7E4D2] bg-[#EFF9F2] text-[#397A53]'
+                          : 'border-[#E5DDE1] bg-[#F6F3F4] text-[#766C71]'
                       }`}
                     >
                       {service.isActive
@@ -567,37 +620,39 @@ const AdminServices: React.FC = () => {
                     </span>
                   </div>
 
-                  <p className="mb-3 line-clamp-2 text-sm text-gray-600">
+                  <p className="mb-4 line-clamp-2 min-h-[40px] text-[12px] leading-5 text-[#786A72]">
                     {service.description}
                   </p>
 
-                  <div className="mb-4">
-                    <p className="text-sm text-gray-600">
-                      Price: ${Number(service.price).toFixed(2)}
-                    </p>
+                  <div className="mb-5 flex flex-wrap items-center gap-3 border-t border-[#F2E5E9] pt-4">
+                    <span className="rounded-lg bg-[#F7DDE4]/65 px-3 py-2 text-[13px] font-bold text-[#963F60]">
+                      ${Number(service.price).toFixed(2)}
+                    </span>
 
-                    <p className="text-sm text-gray-600">
-                      Duration: {service.duration} min
-                    </p>
+                    <span className="text-[12px] text-[#786A72]">
+                      {service.duration} min
+                    </span>
                   </div>
 
                   <div className="flex gap-2">
                     <Button
+                      type="button"
                       onClick={() => handleEdit(service)}
                       variant="outline"
                       size="sm"
-                      className="flex-1"
+                      className={`min-h-10 flex-1 rounded-lg text-[12px] font-semibold ${outlineButtonClass}`}
                       disabled={isDeactivating}
                     >
                       <Edit
                         size={16}
-                        className="mr-1"
+                        className="mr-2"
                       />
-                      Edit
+                      Edit Service
                     </Button>
 
                     {service.isActive && (
                       <Button
+                        type="button"
                         onClick={() =>
                           handleDeactivate(service)
                         }
@@ -605,7 +660,7 @@ const AdminServices: React.FC = () => {
                         size="sm"
                         title="Deactivate service"
                         aria-label={`Deactivate ${service.title}`}
-                        className="text-red-600 hover:text-red-700"
+                        className="min-h-10 rounded-lg border border-[#F0C9D0] bg-[#FFF7F8] text-[#A5465B] hover:border-[#A5465B] hover:bg-[#FFF0F2] hover:text-[#963F60]"
                         disabled={isDeactivating}
                       >
                         {isDeactivating &&
@@ -623,7 +678,7 @@ const AdminServices: React.FC = () => {
                   </div>
 
                   {!service.isActive && (
-                    <p className="mt-3 text-xs text-gray-500">
+                    <p className="mt-3 text-[11px] leading-5 text-[#96858E]">
                       To restore this service, click Edit and
                       select the active checkbox.
                     </p>
@@ -634,13 +689,15 @@ const AdminServices: React.FC = () => {
           </div>
         )}
 
+        {/* ADD / EDIT SERVICE DIALOG */}
+
         <Dialog
           open={isDialogOpen}
           onOpenChange={handleDialogChange}
         >
-          <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto border-[#F0DCE3] bg-white">
             <DialogHeader>
-              <DialogTitle>
+              <DialogTitle className="font-heading text-[32px] text-[#29252B]">
                 {editingService
                   ? 'Edit Service'
                   : 'Add New Service'}
@@ -649,10 +706,15 @@ const AdminServices: React.FC = () => {
 
             <form
               onSubmit={handleSubmit}
-              className="space-y-4"
+              className="space-y-5"
             >
+              {/* TITLE */}
+
               <div>
-                <Label htmlFor="title">
+                <Label
+                  htmlFor="title"
+                  className="text-[#29252B]"
+                >
                   Service Title *
                 </Label>
 
@@ -670,11 +732,17 @@ const AdminServices: React.FC = () => {
                     }))
                   }
                   placeholder="e.g., Gel Manicure"
+                  className={`mt-2 ${inputClass}`}
                 />
               </div>
 
+              {/* DESCRIPTION */}
+
               <div>
-                <Label htmlFor="description">
+                <Label
+                  htmlFor="description"
+                  className="text-[#29252B]"
+                >
                   Description *
                 </Label>
 
@@ -692,11 +760,17 @@ const AdminServices: React.FC = () => {
                   }
                   placeholder="Describe the service..."
                   rows={3}
+                  className={`mt-2 ${inputClass}`}
                 />
               </div>
 
+              {/* PRICE */}
+
               <div>
-                <Label htmlFor="price">
+                <Label
+                  htmlFor="price"
+                  className="text-[#29252B]"
+                >
                   Price ($) *
                 </Label>
 
@@ -716,12 +790,18 @@ const AdminServices: React.FC = () => {
                     }))
                   }
                   placeholder="55.00"
+                  className={`mt-2 ${inputClass}`}
                 />
               </div>
 
+              {/* DURATION AND CATEGORY */}
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <Label htmlFor="duration">
+                  <Label
+                    htmlFor="duration"
+                    className="text-[#29252B]"
+                  >
                     Duration (minutes) *
                   </Label>
 
@@ -741,11 +821,15 @@ const AdminServices: React.FC = () => {
                       }))
                     }
                     placeholder="60"
+                    className={`mt-2 ${inputClass}`}
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="category">
+                  <Label
+                    htmlFor="category"
+                    className="text-[#29252B]"
+                  >
                     Category *
                   </Label>
 
@@ -762,17 +846,23 @@ const AdminServices: React.FC = () => {
                       }))
                     }
                     placeholder="e.g., Manicure"
+                    className={`mt-2 ${inputClass}`}
                   />
                 </div>
               </div>
 
+              {/* IMAGE UPLOAD */}
+
               <div>
-                <Label htmlFor="imageUpload">
+                <Label
+                  htmlFor="imageUpload"
+                  className="text-[#29252B]"
+                >
                   Service Images *
                 </Label>
 
                 <div className="mt-2 space-y-4">
-                  <div className="rounded-lg border-2 border-dashed border-gray-300 p-6 text-center transition-colors hover:border-pink-400">
+                  <div className="rounded-xl border-2 border-dashed border-[#E4BFCB] bg-[#FFF7F8] p-6 text-center transition-colors hover:border-[#EFA1B7]">
                     <input
                       type="file"
                       id="imageUpload"
@@ -794,29 +884,34 @@ const AdminServices: React.FC = () => {
                       {isUploading ? (
                         <div className="flex flex-col items-center">
                           <Loader2
-                            className="mb-2 animate-spin text-pink-500"
+                            className="mb-2 animate-spin text-[#963F60]"
                             size={32}
                           />
-                          <p className="text-sm text-gray-600">
+
+                          <p className="text-sm text-[#786A72]">
                             Uploading images...
                           </p>
                         </div>
                       ) : (
                         <div className="flex flex-col items-center">
                           <Upload
-                            className="mb-2 text-gray-400"
+                            className="mb-2 text-[#963F60]"
                             size={32}
                           />
-                          <p className="mb-1 text-sm text-gray-600">
+
+                          <p className="mb-1 text-sm font-semibold text-[#29252B]">
                             Click to upload images
                           </p>
-                          <p className="text-xs text-gray-500">
+
+                          <p className="text-xs text-[#96858E]">
                             PNG, JPG, GIF, WebP up to 3 MB each
                           </p>
                         </div>
                       )}
                     </label>
                   </div>
+
+                  {/* UPLOADED IMAGE PREVIEWS */}
 
                   {uploadedImages.length > 0 && (
                     <div className="grid grid-cols-3 gap-4">
@@ -828,7 +923,7 @@ const AdminServices: React.FC = () => {
                           <img
                             src={url}
                             alt={`Upload ${index + 1}`}
-                            className="h-32 w-full rounded-lg bg-pink-50 object-contain"
+                            className="h-32 w-full rounded-lg bg-[#FFF7F8] object-contain"
                           />
 
                           <button
@@ -840,7 +935,7 @@ const AdminServices: React.FC = () => {
                             aria-label={`Remove image ${
                               index + 1
                             }`}
-                            className="absolute right-2 top-2 rounded-full bg-red-500 p-1 text-white transition-opacity hover:bg-red-600 disabled:opacity-50"
+                            className="absolute right-2 top-2 rounded-full border border-[#E4BFCB] bg-[#963F60] p-1 text-white transition-colors hover:bg-[#79324F] disabled:opacity-50"
                           >
                             <X size={16} />
                           </button>
@@ -850,11 +945,13 @@ const AdminServices: React.FC = () => {
                   )}
                 </div>
 
-                <p className="mt-2 text-xs text-gray-500">
+                <p className="mt-2 text-xs text-[#96858E]">
                   Upload multiple images for this service.
                   The first image will be the main display.
                 </p>
               </div>
+
+              {/* ACTIVE STATUS */}
 
               <div className="flex items-center gap-2">
                 <input
@@ -868,23 +965,25 @@ const AdminServices: React.FC = () => {
                       isActive: event.target.checked,
                     }))
                   }
-                  className="h-4 w-4"
+                  className="h-4 w-4 accent-[#963F60]"
                 />
 
                 <Label
                   htmlFor="isActive"
-                  className="cursor-pointer"
+                  className="cursor-pointer text-[#29252B]"
                 >
                   Service is active and visible to customers
                 </Label>
               </div>
 
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-[#96858E]">
                 Deposits are selected individually when
                 reviewing appointment requests.
               </p>
 
-              <div className="flex gap-3 pt-4">
+              {/* FORM BUTTONS */}
+
+              <div className="flex gap-3 border-t border-[#F2E5E9] pt-5">
                 <Button
                   type="button"
                   variant="outline"
@@ -892,7 +991,7 @@ const AdminServices: React.FC = () => {
                   onClick={() =>
                     handleDialogChange(false)
                   }
-                  className="flex-1"
+                  className={`min-h-11 flex-1 rounded-lg text-[12px] font-semibold ${outlineButtonClass}`}
                 >
                   Cancel
                 </Button>
@@ -900,7 +999,7 @@ const AdminServices: React.FC = () => {
                 <Button
                   type="submit"
                   disabled={isBusy}
-                  className="flex-1 bg-gradient-to-r from-pink-500 to-pink-700 text-white hover:from-pink-600 hover:to-pink-800"
+                  className={`min-h-11 flex-1 rounded-lg text-[12px] font-semibold ${primaryButtonClass}`}
                 >
                   {isSaving ? (
                     <>

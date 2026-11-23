@@ -1,5 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
+
 import {
   Navigate,
   Link,
@@ -493,17 +494,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({
 
       <div className="lg:ml-[272px] min-h-screen">
         {/* Desktop Top Bar */}
-        <div className="hidden lg:flex h-[76px] items-center justify-between border-b border-[#F0DCE3] bg-white/80 px-8 xl:px-10">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#963F60]">
-              InLoveNailz by Briana
-            </p>
-
-            <p className="mt-1 text-xs text-[#786A72]">
-              Studio Administration
-            </p>
-          </div>
-
+        <div className="hidden lg:flex h-[76px] items-center justify-end border-b border-[#F0DCE3] bg-white/80 px-8 xl:px-10">
           <div className="flex items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#F7DDE4] text-[#963F60]">
               <Heart size={17} strokeWidth={1.7} />
@@ -530,14 +521,8 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({
 
         {/* Page Footer */}
         <footer className="px-4 pb-8 sm:px-6 lg:px-8 xl:px-10">
-          <div className="mx-auto flex max-w-[1500px] flex-col gap-2 border-t border-[#F0DCE3] pt-5 text-[11px] text-[#A28F98] sm:flex-row sm:items-center sm:justify-between">
-            <span>
-              © {new Date().getFullYear()} InLoveNailz by Briana
-            </span>
-
-            <span>
-              Crafted with care, managed with love.
-            </span>
+          <div className="mx-auto max-w-[1500px] border-t border-[#F0DCE3] pt-5 text-[11px] text-[#A28F98]">
+            © {new Date().getFullYear()} InLoveNailz by Briana
           </div>
         </footer>
       </div>
