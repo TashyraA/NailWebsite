@@ -4,14 +4,19 @@ import { requireAdmin } from './_admin-auth.js';
 
 /* =========================================
    INLOVENAILZ BY BRIANA
+
    SECURE APPOINTMENT DECISION API
 
    - Administrator access required
    - Same-origin protection
    - Approve with custom deposit
    - Decline pending requests
-   - Enforce existing booking schedule
+   - Read dynamic weekly schedule
+   - Respect date-specific overrides
+   - Respect blocked days and hours
    - Validate appointment duration
+   - Enforce 24-hour advance notice
+   - Maintain 15-minute appointment buffer
    - Prevent overlapping reservations
    - No Stripe payment in this step
 ========================================= */
@@ -116,8 +121,14 @@ export default async function handler(
   res: any
 ) {
   res.setHeader('Cache-Control', 'no-store');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader(
+    'X-Content-Type-Options',
+    'nosniff'
+  );
+  res.setHeader(
+    'Referrer-Policy',
+    'no-referrer'
+  );
 
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -207,6 +218,8 @@ export default async function handler(
 
     /* =====================================
        DECLINE A PENDING REQUEST
+
+       Preserve the existing decline logic.
     ===================================== */
 
     if (action === 'decline') {
@@ -248,13 +261,15 @@ export default async function handler(
     /* =====================================
        APPROVE A PENDING REQUEST
 
-       PostgreSQL calculates local appointment
+       PostgreSQL calculates appointment
        timestamps in America/New_York.
 
-       This uses a single conditional UPDATE.
-       The database exclusion constraint
-       remains responsible for preventing
-       concurrent overlapping reservations.
+       Approval must follow the same dynamic
+       schedule as customer availability.
+
+       The conditional UPDATE and database
+       exclusion constraint protect against
+       overlapping active reservations.
     ===================================== */
 
     const depositAmount = depositCents! / 100;
@@ -267,106 +282,269 @@ export default async function handler(
           duration_minutes,
           appointment_date,
           appointment_time,
+
           (
             (
-              appointment_date::text || ' ' ||
-              appointment_time
+              appointment_date::text
+              || ' '
+              || appointment_time
             )::timestamp
             AT TIME ZONE 'America/New_York'
-          ) AS requested_start
+          ) AS requested_start,
+
+          (
+            appointment_date::text
+            || ' '
+            || appointment_time
+          )::timestamp AS local_start
+
         FROM appointment_requests
+
         WHERE id = ${appointmentId}::uuid
           AND status = 'pending'
       ),
+
       eligible AS (
         SELECT
-          id,
-          requested_start,
-          requested_start +
-            (duration_minutes * INTERVAL '1 minute')
-            AS requested_end
+          candidate.id,
+          candidate.requested_start,
+
+          candidate.requested_start +
+            (
+              candidate.duration_minutes
+              * INTERVAL '1 minute'
+            ) AS requested_end
+
         FROM candidate
+
         WHERE
-          duration_minutes IS NOT NULL
-          AND duration_minutes > 0
-          AND duration_minutes <=
+          candidate.duration_minutes IS NOT NULL
+
+          AND candidate.duration_minutes > 0
+
+          AND candidate.duration_minutes <=
             ${SLOT_DURATION_MINUTES}
-          AND total_price > 0
-          AND ${depositAmount}::numeric <= total_price
-          AND appointment_time IN (
-            '09:00',
-            '11:15',
-            '13:30'
-          )
-          AND EXTRACT(
-            ISODOW FROM appointment_date
-          ) BETWEEN 1 AND 6
+
+          AND candidate.total_price > 0
+
+          AND ${depositAmount}::numeric <=
+            candidate.total_price
+
+          /* =================================
+             VALID WEEKLY OR ADDED TIME
+
+             A scheduled start time is not
+             an operating-hours cutoff.
+          ================================= */
+
           AND (
-            EXTRACT(
-              ISODOW FROM appointment_date
-            ) <> 6
-            OR appointment_time IN (
-              '09:00',
-              '11:15'
+            EXISTS (
+              SELECT 1
+
+              FROM salon_weekly_schedule weekly
+
+              WHERE weekly.is_active = TRUE
+
+                AND weekly.day_of_week =
+                  EXTRACT(
+                    DOW FROM candidate.appointment_date
+                  )::integer
+
+                AND weekly.appointment_time =
+                  candidate.appointment_time::time
+            )
+
+            OR EXISTS (
+              SELECT 1
+
+              FROM salon_schedule_overrides added
+
+              WHERE added.override_date =
+                candidate.appointment_date
+
+                AND added.appointment_time =
+                  candidate.appointment_time::time
+
+                AND added.action = 'add'
             )
           )
-          AND requested_start >=
-            NOW() +
-            (
-              ${MINIMUM_NOTICE_HOURS} *
-              INTERVAL '1 hour'
-            )
-          AND requested_start =
-            (
-              (
-                requested_start
-                AT TIME ZONE 'America/New_York'
-              ) AT TIME ZONE 'America/New_York'
-            )
+
+          /* =================================
+             DATE-SPECIFIC REMOVED TIMES
+          ================================= */
+
           AND NOT EXISTS (
             SELECT 1
+
+            FROM salon_schedule_overrides removed
+
+            WHERE removed.override_date =
+              candidate.appointment_date
+
+              AND removed.appointment_time =
+                candidate.appointment_time::time
+
+              AND removed.action = 'remove'
+          )
+
+          /* =================================
+             24-HOUR ADVANCE NOTICE
+          ================================= */
+
+          AND candidate.requested_start >=
+            NOW() +
+            (
+              ${MINIMUM_NOTICE_HOURS}
+              * INTERVAL '1 hour'
+            )
+
+          /* =================================
+             REJECT NONEXISTENT DST TIMES
+          ================================= */
+
+          AND (
+            candidate.requested_start
+            AT TIME ZONE 'America/New_York'
+          ) = candidate.local_start
+
+          /* =================================
+             EXISTING RESERVATION CONFLICTS
+
+             Only awaiting_deposit and
+             confirmed appointments reserve
+             an appointment time.
+
+             Apply 15-minute buffer before
+             and after existing reservations.
+          ================================= */
+
+          AND NOT EXISTS (
+            SELECT 1
+
             FROM appointment_requests existing
+
             WHERE existing.id <> candidate.id
+
               AND existing.status IN (
                 'awaiting_deposit',
                 'confirmed'
               )
+
               AND existing.starts_at IS NOT NULL
+
               AND existing.ends_at IS NOT NULL
+
               AND existing.starts_at <
-                requested_start +
+                candidate.requested_start +
                 (
                   (
-                    duration_minutes +
+                    candidate.duration_minutes +
                     ${BUFFER_MINUTES}
                   ) * INTERVAL '1 minute'
                 )
+
               AND existing.ends_at +
                 (
-                  ${BUFFER_MINUTES} *
-                  INTERVAL '1 minute'
-                ) > requested_start
+                  ${BUFFER_MINUTES}
+                  * INTERVAL '1 minute'
+                ) > candidate.requested_start
+          )
+
+          /* =================================
+             BLOCKED DAYS AND HOURS
+
+             A full-day block rejects every
+             appointment on that date.
+
+             A partial block rejects an
+             appointment when its duration
+             plus the 15-minute buffer
+             overlaps the blocked period.
+          ================================= */
+
+          AND NOT EXISTS (
+            SELECT 1
+
+            FROM salon_schedule_blocks block
+
+            WHERE block.block_date =
+              candidate.appointment_date
+
+              AND (
+                (
+                  block.start_time IS NULL
+                  AND block.end_time IS NULL
+                )
+
+                OR
+
+                (
+                  block.start_time IS NOT NULL
+                  AND block.end_time IS NOT NULL
+
+                  AND candidate.requested_start <
+                    (
+                      (
+                        block.block_date +
+                        block.end_time
+                      )
+                      AT TIME ZONE
+                        'America/New_York'
+                    )
+
+                  AND candidate.requested_start +
+                    (
+                      (
+                        candidate.duration_minutes +
+                        ${BUFFER_MINUTES}
+                      ) * INTERVAL '1 minute'
+                    ) >
+                    (
+                      (
+                        block.block_date +
+                        block.start_time
+                      )
+                      AT TIME ZONE
+                        'America/New_York'
+                    )
+                )
+              )
           )
       )
+
       UPDATE appointment_requests AS appointment
+
       SET
         status = 'awaiting_deposit',
+
         deposit_amount = ${depositAmount},
+
         reviewed_at = NOW(),
+
         updated_at = NOW(),
+
         starts_at = eligible.requested_start,
+
         ends_at = eligible.requested_end,
+
         review_token_hash = NULL,
+
         review_token_expires_at = NULL
+
       FROM eligible
+
       WHERE appointment.id = eligible.id
+
         AND appointment.status = 'pending'
+
       RETURNING
         appointment.id,
         appointment.status,
         appointment.deposit_amount,
+
         appointment.appointment_date::text
           AS appointment_date,
+
         appointment.appointment_time,
         appointment.starts_at,
         appointment.ends_at
@@ -376,7 +554,7 @@ export default async function handler(
       return res.status(409).json({
         success: false,
         error:
-          'Unable to approve this request. It may have changed, conflict with another appointment, exceed the available slot, fall outside the booking schedule, or have an invalid deposit. Refresh and review the details.',
+          'Unable to approve this request. It may have changed, conflict with another appointment, exceed the maximum duration, fall outside the current schedule, overlap a blocked period, or have an invalid deposit. Refresh and review the details.',
       });
     }
 
@@ -385,6 +563,7 @@ export default async function handler(
       result[0] as DecisionRow,
       'Appointment approved and awaiting deposit. No payment link has been sent yet.'
     );
+
   } catch (error: unknown) {
     const databaseError = error as {
       code?: string;
