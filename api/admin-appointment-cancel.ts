@@ -36,7 +36,6 @@ type CancellationResult = {
   customer_name: string;
   customer_email: string;
   deposit_amount: string | number | null;
-  deposit_paid: string | number | null;
   deposit_paid_at: string | null;
 };
 
@@ -73,10 +72,6 @@ export default async function handler(
 
   /* =====================================
      VERIFY ADMIN SESSION
-
-     The existing authentication helper
-     also enforces same-origin protection
-     for state-changing requests.
   ===================================== */
 
   if (!requireAdmin(req, res, true)) {
@@ -110,7 +105,6 @@ export default async function handler(
     }
 
     const body = rawBody as CancellationRequest;
-
     const appointmentId = body.appointmentId;
 
     if (
@@ -173,23 +167,18 @@ export default async function handler(
        Pending requests use the existing
        Decline action.
 
-       The cancellation reason is appended
-       to the existing notes field to
-       preserve the original customer notes.
+       Preserve original customer notes
+       and all existing payment fields.
 
-       Do not erase payment information.
-
-       The existing availability queries
-       only reserve awaiting_deposit and
-       confirmed appointments, so changing
-       the status to cancelled releases
-       the appointment time.
+       The availability system reserves
+       only awaiting_deposit and confirmed
+       appointments, so cancellation
+       releases the appointment time.
     ===================================== */
 
     const cancellationEntry =
       `[ADMIN CANCELLATION]\n` +
-      `Reason: ${reason}\n` +
-      `Cancelled at: recorded in UTC by database`;
+      `Reason: ${reason}`;
 
     const result = await sql`
       UPDATE appointment_requests
@@ -230,7 +219,6 @@ export default async function handler(
         customer_name,
         customer_email,
         deposit_amount,
-        deposit_paid,
         deposit_paid_at
     `;
 
@@ -249,13 +237,20 @@ export default async function handler(
     const appointment =
       result[0] as CancellationResult;
 
-    const depositPaid = Number(
-      appointment.deposit_paid ?? 0
-    );
+    /*
+       deposit_paid_at is the existing
+       database indicator that a deposit
+       payment was recorded.
+
+       deposit_amount is the requested
+       deposit, not independently verified
+       proof of the amount paid.
+
+       Do not issue refunds automatically.
+    */
 
     const hasPaidDeposit =
-      appointment.deposit_paid_at !== null &&
-      depositPaid > 0;
+      appointment.deposit_paid_at !== null;
 
     /* =====================================
        SUCCESS RESPONSE
@@ -268,7 +263,7 @@ export default async function handler(
       success: true,
 
       message: hasPaidDeposit
-        ? 'Appointment cancelled and its time released. A deposit was previously paid. Review the payment and handle any refund separately.'
+        ? 'Appointment cancelled and its time released. A deposit payment was recorded. Review Stripe and handle any refund separately.'
         : 'Appointment cancelled successfully. Its reserved time is now available again.',
 
       appointment: {
@@ -286,7 +281,8 @@ export default async function handler(
           appointment.deposit_amount === null
             ? null
             : Number(appointment.deposit_amount),
-        depositPaid,
+        depositPaidAt:
+          appointment.deposit_paid_at,
         hasPaidDeposit,
         cancellationReason: reason,
       },
