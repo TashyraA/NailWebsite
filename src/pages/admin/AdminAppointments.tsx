@@ -1,6 +1,10 @@
 
 import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 
 import { getAppointments } from '@/services/appointmentService';
 import AdminLayout from '@/components/admin/AdminLayout';
@@ -22,6 +26,8 @@ import {
   AlertCircle,
   Loader2,
   UserRound,
+  ShieldCheck,
+  XCircle,
 } from 'lucide-react';
 
 import {
@@ -36,6 +42,20 @@ type StatusFilter =
   | 'confirmed'
   | 'declined'
   | 'cancelled';
+
+type DecisionAction = 'approve' | 'decline';
+
+type DecisionRequest = {
+  appointmentId: string;
+  action: DecisionAction;
+  depositAmount?: number;
+};
+
+type DecisionResponse = {
+  success: boolean;
+  message?: string;
+  error?: string;
+};
 
 const currency = (value: unknown): string => {
   const number = Number(value ?? 0);
@@ -103,10 +123,82 @@ const formatAppointmentTime = (value: unknown) => {
   }
 };
 
+const parseDeposit = (value: string): number | null => {
+  const trimmed = value.trim();
+
+  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) {
+    return null;
+  }
+
+  const amount = Number(trimmed);
+
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0 ||
+    !Number.isSafeInteger(Math.round(amount * 100))
+  ) {
+    return null;
+  }
+
+  return amount;
+};
+
+async function submitAppointmentDecision(
+  request: DecisionRequest
+): Promise<DecisionResponse> {
+  const response = await fetch(
+    '/api/admin-appointment-decision',
+    {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    }
+  );
+
+  let result: DecisionResponse;
+
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error(
+      'Unable to read the server response. Please try again.'
+    );
+  }
+
+  if (!response.ok || !result.success) {
+    throw new Error(
+      result.error ||
+        'Unable to update the appointment.'
+    );
+  }
+
+  return result;
+}
+
 const AdminAppointments = () => {
-  const [searchTerm, setSearchTerm] = React.useState('');
+  const queryClient = useQueryClient();
+
+  const [searchTerm, setSearchTerm] =
+    React.useState('');
+
   const [statusFilter, setStatusFilter] =
     React.useState<StatusFilter>('all');
+
+  const [depositInputs, setDepositInputs] =
+    React.useState<Record<string, string>>({});
+
+  const [decisionErrors, setDecisionErrors] =
+    React.useState<Record<string, string>>({});
+
+  const [decisionSuccess, setDecisionSuccess] =
+    React.useState<Record<string, string>>({});
+
+  const [processingId, setProcessingId] =
+    React.useState<string | null>(null);
 
   const {
     data: appointments = [],
@@ -118,6 +210,10 @@ const AdminAppointments = () => {
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
+  });
+
+  const decisionMutation = useMutation({
+    mutationFn: submitAppointmentDecision,
   });
 
   const sortedAppointments = React.useMemo(() => {
@@ -219,6 +315,103 @@ const AdminAppointments = () => {
       count: counts.cancelled,
     },
   ];
+
+  const clearDecisionMessages = (id: string) => {
+    setDecisionErrors(previous => ({
+      ...previous,
+      [id]: '',
+    }));
+
+    setDecisionSuccess(previous => ({
+      ...previous,
+      [id]: '',
+    }));
+  };
+
+  const handleDecision = async (
+    appointmentId: string,
+    customerName: string,
+    action: DecisionAction,
+    totalPrice: number
+  ) => {
+    if (processingId) return;
+
+    clearDecisionMessages(appointmentId);
+
+    let depositAmount: number | undefined;
+
+    if (action === 'approve') {
+      const input = depositInputs[appointmentId] || '';
+      const parsed = parseDeposit(input);
+
+      if (
+        parsed === null ||
+        parsed > totalPrice
+      ) {
+        setDecisionErrors(previous => ({
+          ...previous,
+          [appointmentId]:
+            'Enter a valid deposit greater than $0 and no more than the service total.',
+        }));
+
+        return;
+      }
+
+      depositAmount = parsed;
+
+      const confirmed = window.confirm(
+        `Approve the appointment request for ${customerName} with a ${currency(
+          parsed
+        )} deposit?\n\nThe request will move to Awaiting Deposit.\n\nIMPORTANT: No Stripe payment link will be created or emailed yet. The appointment will NOT be confirmed.`
+      );
+
+      if (!confirmed) return;
+    } else {
+      const confirmed = window.confirm(
+        `Decline the appointment request for ${customerName}?\n\nThis will change the request status to Declined. This action cannot be undone from this page.\n\nNo automatic customer email will be sent yet.`
+      );
+
+      if (!confirmed) return;
+    }
+
+    setProcessingId(appointmentId);
+
+    try {
+      const result = await decisionMutation.mutateAsync({
+        appointmentId,
+        action,
+        ...(action === 'approve'
+          ? { depositAmount }
+          : {}),
+      });
+
+      setDecisionSuccess(previous => ({
+        ...previous,
+        [appointmentId]:
+          result.message ||
+          'Appointment updated successfully.',
+      }));
+
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['appointments'],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['admin-dashboard'],
+        }),
+      ]);
+    } catch (caughtError) {
+      setDecisionErrors(previous => ({
+        ...previous,
+        [appointmentId]:
+          caughtError instanceof Error
+            ? caughtError.message
+            : 'Unable to update the appointment.',
+      }));
+    } finally {
+      setProcessingId(null);
+    }
+  };
 
   return (
     <AdminLayout>
@@ -417,6 +610,19 @@ const AdminAppointments = () => {
               )
                 ? appointment.services
                 : [];
+
+              const isPending =
+                appointment.status === 'pending';
+
+              const isProcessing =
+                processingId === appointment.id;
+
+              const isAnotherProcessing =
+                processingId !== null &&
+                processingId !== appointment.id;
+
+              const depositInput =
+                depositInputs[appointment.id] ?? '';
 
               return (
                 <Card
@@ -757,7 +963,7 @@ const AdminAppointments = () => {
                                 ? 'Deposit payment recorded.'
                                 : appointment.status ===
                                     'awaiting_deposit'
-                                  ? 'Waiting for the customer to pay the requested deposit.'
+                                  ? 'Awaiting deposit. The Stripe payment link has not been connected yet.'
                                   : 'No deposit payment has been recorded.'}
                             </p>
                           </div>
@@ -786,7 +992,7 @@ const AdminAppointments = () => {
                             ? 'This request is waiting for administrator review.'
                             : appointment.status ===
                                 'awaiting_deposit'
-                              ? 'A deposit is required before this booking can be confirmed.'
+                              ? 'Approved, but not confirmed. Stripe payment setup is still required.'
                               : appointment.status ===
                                   'confirmed'
                                 ? 'This appointment is confirmed.'
@@ -801,6 +1007,186 @@ const AdminAppointments = () => {
                       </div>
                     </div>
                   </div>
+
+                  {/* ADMIN APPROVAL CONTROLS */}
+
+                  {isPending && (
+                    <div className="border-t border-[#EBCBD6] bg-[#FFF7F8] px-5 py-6 sm:px-6">
+                      <div className="mb-5 flex items-start gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-[#963F60]">
+                          <ShieldCheck size={21} />
+                        </div>
+
+                        <div>
+                          <h4 className="font-heading text-[25px] text-[#29252B]">
+                            Review Appointment
+                          </h4>
+
+                          <p className="mt-1 text-[12px] leading-5 text-[#786A72]">
+                            Set the deposit amount before
+                            approving, or decline this request.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="max-w-md">
+                        <label
+                          htmlFor={`deposit-${appointment.id}`}
+                          className="mb-2 block text-[12px] font-semibold text-[#29252B]"
+                        >
+                          Custom Deposit Amount
+                        </label>
+
+                        <div className="relative">
+                          <DollarSign
+                            size={17}
+                            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#963F60]"
+                          />
+
+                          <input
+                            id={`deposit-${appointment.id}`}
+                            type="number"
+                            min="0.01"
+                            max={totalPrice}
+                            step="0.01"
+                            inputMode="decimal"
+                            placeholder="Enter deposit amount"
+                            value={depositInput}
+                            disabled={
+                              isProcessing ||
+                              isAnotherProcessing
+                            }
+                            onChange={event => {
+                              setDepositInputs(previous => ({
+                                ...previous,
+                                [appointment.id]:
+                                  event.target.value,
+                              }));
+
+                              clearDecisionMessages(
+                                appointment.id
+                              );
+                            }}
+                            className="h-12 w-full rounded-lg border border-[#EBCBD6] bg-white pl-10 pr-4 text-[14px] text-[#29252B] outline-none transition-colors placeholder:text-[#A28F98] focus:border-[#963F60] focus:ring-2 focus:ring-[#963F60]/10 disabled:opacity-60"
+                          />
+                        </div>
+
+                        <p className="mt-2 text-[11px] text-[#786A72]">
+                          Service total:{' '}
+                          <span className="font-semibold text-[#963F60]">
+                            {currency(totalPrice)}
+                          </span>
+                        </p>
+                      </div>
+
+                      <div className="mt-4 rounded-lg border border-[#EBCBD6] bg-white p-4">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle
+                            size={17}
+                            className="mt-0.5 shrink-0 text-[#963F60]"
+                          />
+
+                          <p className="text-[11px] leading-5 text-[#786A72]">
+                            Approval will reserve the
+                            appointment as{' '}
+                            <strong>Awaiting Deposit</strong>.
+                            No payment link or customer
+                            notification will be sent yet.
+                            The appointment is not confirmed
+                            until the Stripe payment workflow
+                            is completed.
+                          </p>
+                        </div>
+                      </div>
+
+                      {decisionErrors[appointment.id] && (
+                        <div
+                          role="alert"
+                          className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-700"
+                        >
+                          {decisionErrors[appointment.id]}
+                        </div>
+                      )}
+
+                      <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                        <button
+                          type="button"
+                          disabled={
+                            isProcessing ||
+                            isAnotherProcessing
+                          }
+                          onClick={() =>
+                            handleDecision(
+                              appointment.id,
+                              appointment.customerName ||
+                                'this customer',
+                              'approve',
+                              totalPrice
+                            )
+                          }
+                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#963F60] px-5 py-3 text-[12px] font-semibold text-white transition-colors hover:bg-[#79324F] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isProcessing ? (
+                            <Loader2
+                              size={17}
+                              className="animate-spin"
+                            />
+                          ) : (
+                            <CheckCircle2 size={17} />
+                          )}
+
+                          Approve Request
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={
+                            isProcessing ||
+                            isAnotherProcessing
+                          }
+                          onClick={() =>
+                            handleDecision(
+                              appointment.id,
+                              appointment.customerName ||
+                                'this customer',
+                              'decline',
+                              totalPrice
+                            )
+                          }
+                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#DCA7B6] bg-white px-5 py-3 text-[12px] font-semibold text-[#963F60] transition-colors hover:border-[#963F60] hover:bg-[#FCECF1] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isProcessing ? (
+                            <Loader2
+                              size={17}
+                              className="animate-spin"
+                            />
+                          ) : (
+                            <XCircle size={17} />
+                          )}
+
+                          Decline Request
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* DECISION SUCCESS MESSAGE */}
+
+                  {decisionSuccess[appointment.id] && (
+                    <div
+                      role="status"
+                      className="flex items-start gap-3 border-t border-[#C7E4D2] bg-[#EFF9F2] px-5 py-4 sm:px-6"
+                    >
+                      <CheckCircle2
+                        size={19}
+                        className="mt-0.5 shrink-0 text-[#397A53]"
+                      />
+
+                      <p className="text-[12px] leading-5 text-[#397A53]">
+                        {decisionSuccess[appointment.id]}
+                      </p>
+                    </div>
+                  )}
                 </Card>
               );
             })}
