@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import {
@@ -29,29 +29,41 @@ import { useToast } from '@/hooks/use-toast';
 import {
   formatDateForBooking,
   formatTime,
-  getAvailableTimes,
 } from '@/utils/availability';
 
 /* =========================================
    INLOVENAILZ BY BRIANA
    RESPONSIVE BOOK APPOINTMENT PAGE
 
+   - Live Neon appointment availability
+   - Weekly schedule and date overrides
+   - Blocked dates and reserved times
+   - Duration-aware appointment times
    - Mobile-safe date input
    - Responsive form fields
    - Full mobile/tablet hero image
    - Shorter 300px desktop hero
    - Responsive inspiration upload
    - Appointment request without payment
-   - Existing API endpoint retained
+   - Existing request API retained
 ========================================= */
 
 const MAX_IMAGE_SIZE = 3 * 1024 * 1024;
+const MAX_APPOINTMENT_DURATION = 120;
 
 const ACCEPTED_IMAGE_TYPES = [
   'image/jpeg',
   'image/png',
   'image/webp',
 ];
+
+type AvailabilityResponse = {
+  success?: boolean;
+  date?: string;
+  durationMinutes?: number;
+  availableTimes?: string[];
+  error?: string;
+};
 
 const inputStyles = `
   mt-2 block h-12
@@ -65,6 +77,63 @@ const inputStyles = `
   sm:text-sm
 `;
 
+async function fetchAvailability(
+  appointmentDate: string,
+  durationMinutes: number,
+  signal?: AbortSignal
+): Promise<string[]> {
+  const params = new URLSearchParams({
+    date: appointmentDate,
+    durationMinutes: String(durationMinutes),
+  });
+
+  const response = await fetch(
+    `/api/appointment-availability?${params.toString()}`,
+    {
+      method: 'GET',
+      cache: 'no-store',
+      signal,
+      headers: {
+        Accept: 'application/json',
+      },
+    }
+  );
+
+  let result: AvailabilityResponse;
+
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error(
+      'Unable to read appointment availability. Please try again.'
+    );
+  }
+
+  if (!response.ok || !result.success) {
+    throw new Error(
+      result.error ||
+        'Unable to load appointment times. Please try again.'
+    );
+  }
+
+  if (
+    result.date !== appointmentDate ||
+    result.durationMinutes !== durationMinutes ||
+    !Array.isArray(result.availableTimes) ||
+    !result.availableTimes.every(
+      slot =>
+        typeof slot === 'string' &&
+        /^([01]\d|2[0-3]):[0-5]\d$/.test(slot)
+    )
+  ) {
+    throw new Error(
+      'Appointment availability returned an unexpected response.'
+    );
+  }
+
+  return result.availableTimes;
+}
+
 const BookAppointment: React.FC = () => {
   const { items, getTotalPrice } = useCart();
   const { toast } = useToast();
@@ -75,6 +144,11 @@ const BookAppointment: React.FC = () => {
 
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
+  const [availableTimes, setAvailableTimes] = useState<string[]>([]);
+  const [isLoadingTimes, setIsLoadingTimes] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState('');
+  const [loadedAvailabilityKey, setLoadedAvailabilityKey] = useState('');
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [requestSent, setRequestSent] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -97,11 +171,6 @@ const BookAppointment: React.FC = () => {
     return new Date(`${date}T12:00:00`);
   }, [date]);
 
-  const availableTimes = useMemo(() => {
-    if (!selectedDate) return [];
-    return getAvailableTimes(selectedDate);
-  }, [selectedDate]);
-
   const total = getTotalPrice();
 
   const totalDuration = items.reduce(
@@ -115,6 +184,20 @@ const BookAppointment: React.FC = () => {
     0
   );
 
+  const validDuration =
+    Number.isSafeInteger(totalDuration) &&
+    totalDuration > 0 &&
+    totalDuration <= MAX_APPOINTMENT_DURATION;
+
+  const availabilityKey = `${date}:${totalDuration}`;
+
+  const availabilityReady =
+    !!date &&
+    validDuration &&
+    !isLoadingTimes &&
+    !availabilityError &&
+    loadedAvailabilityKey === availabilityKey;
+
   const minDate = formatDateForBooking(
     new Date(Date.now() + 24 * 60 * 60 * 1000)
   );
@@ -127,6 +210,65 @@ const BookAppointment: React.FC = () => {
         year: 'numeric',
       })
     : '';
+
+  /* =====================================
+     LIVE APPOINTMENT AVAILABILITY
+  ===================================== */
+
+  useEffect(() => {
+    if (!date || !validDuration) {
+      setAvailableTimes([]);
+      setLoadedAvailabilityKey('');
+      setAvailabilityError('');
+      setIsLoadingTimes(false);
+      setTime('');
+      return;
+    }
+
+    const controller = new AbortController();
+
+    setIsLoadingTimes(true);
+    setAvailabilityError('');
+    setAvailableTimes([]);
+    setLoadedAvailabilityKey('');
+    setTime('');
+
+    const loadTimes = async () => {
+      try {
+        const times = await fetchAvailability(
+          date,
+          totalDuration,
+          controller.signal
+        );
+
+        if (controller.signal.aborted) return;
+
+        setAvailableTimes(times);
+        setLoadedAvailabilityKey(availabilityKey);
+      } catch (error: unknown) {
+        if (controller.signal.aborted) return;
+
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Unable to load available times.';
+
+        setAvailableTimes([]);
+        setLoadedAvailabilityKey('');
+        setAvailabilityError(message);
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoadingTimes(false);
+        }
+      }
+    };
+
+    void loadTimes();
+
+    return () => {
+      controller.abort();
+    };
+  }, [date, totalDuration, validDuration, availabilityKey]);
 
   /* =====================================
      FORM HELPERS
@@ -286,6 +428,16 @@ const BookAppointment: React.FC = () => {
       return;
     }
 
+    if (!validDuration) {
+      toast({
+        title: 'Appointment duration unavailable',
+        description:
+          'Please select services totaling no more than 120 minutes.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     if (!date || !time) {
       toast({
         title: 'Choose an appointment time',
@@ -296,11 +448,14 @@ const BookAppointment: React.FC = () => {
       return;
     }
 
-    if (!availableTimes.includes(time)) {
+    if (
+      !availabilityReady ||
+      !availableTimes.includes(time)
+    ) {
       toast({
-        title: 'Invalid appointment time',
+        title: 'Appointment time unavailable',
         description:
-          'Please select one of the available time slots.',
+          'Please choose a currently available appointment time.',
         variant: 'destructive',
       });
       return;
@@ -333,6 +488,29 @@ const BookAppointment: React.FC = () => {
     setIsSubmitting(true);
 
     try {
+      // Recheck live availability immediately before
+      // submitting the appointment request.
+      const latestTimes = await fetchAvailability(
+        date,
+        totalDuration
+      );
+
+      setAvailableTimes(latestTimes);
+      setLoadedAvailabilityKey(availabilityKey);
+
+      if (!latestTimes.includes(time)) {
+        setTime('');
+
+        toast({
+          title: 'Appointment time just became unavailable',
+          description:
+            'Please choose another available time.',
+          variant: 'destructive',
+        });
+
+        return;
+      }
+
       const response = await fetch(
         '/api/request-appointment',
         {
@@ -395,7 +573,7 @@ const BookAppointment: React.FC = () => {
         description: message,
         variant: 'destructive',
       });
-
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -452,7 +630,6 @@ const BookAppointment: React.FC = () => {
     return (
       <main className="flex min-h-screen min-w-0 items-center justify-center bg-gradient-to-b from-[#FFF7F8] to-[#F7DDE4] px-3 py-12 sm:px-4 sm:py-20">
         <div className="w-full max-w-[520px] min-w-0 rounded-[22px] border border-[#EAC5D0] bg-white/90 px-5 py-9 text-center shadow-[0_15px_40px_rgba(112,43,68,0.1)] sm:rounded-[28px] sm:px-7 sm:py-12">
-
           <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-[#F7DDE4] text-[#963F60] sm:h-20 sm:w-20">
             <ShoppingBag size={34} />
           </div>
@@ -485,15 +662,7 @@ const BookAppointment: React.FC = () => {
   return (
     <main className="min-h-screen w-full min-w-0 overflow-x-clip bg-gradient-to-b from-[#FFF7F8] via-[#FFF0F3] to-[#F7DDE4] text-[#29252B]">
 
-      {/* =====================================
-          RESPONSIVE BOOKING BANNER
-
-          Mobile / tablet:
-          Full image visible.
-
-          Desktop (1024px+):
-          Shorter 300px banner.
-      ===================================== */}
+      {/* RESPONSIVE BOOKING BANNER */}
 
       <section className="relative isolate w-full overflow-hidden text-white lg:h-[300px]">
         <img
@@ -524,14 +693,10 @@ const BookAppointment: React.FC = () => {
         </div>
       </section>
 
-      {/* =====================================
-          BOOKING CONTENT
-      ===================================== */}
+      {/* BOOKING CONTENT */}
 
       <section className="w-full min-w-0 px-3 py-8 sm:px-6 sm:py-12 lg:px-8 lg:py-16">
         <div className="mx-auto w-full max-w-[1180px] min-w-0">
-
-          {/* BACK TO SERVICES */}
 
           <Link
             to="/services"
@@ -541,13 +706,9 @@ const BookAppointment: React.FC = () => {
             Back to Services
           </Link>
 
-          {/* RESPONSIVE PAGE GRID */}
-
           <div className="grid min-w-0 grid-cols-1 items-start gap-5 sm:gap-7 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-8">
 
-            {/* =====================================
-                LEFT COLUMN
-            ===================================== */}
+            {/* LEFT COLUMN */}
 
             <div className="min-w-0 space-y-5 sm:space-y-7">
 
@@ -575,8 +736,6 @@ const BookAppointment: React.FC = () => {
                   </span>
                 </div>
 
-                {/* SELECTED SERVICES */}
-
                 <div className="space-y-4 px-4 py-5 sm:space-y-5 sm:px-6 sm:py-6">
                   {items.map(({ service, quantity }) => (
                     <div
@@ -594,10 +753,7 @@ const BookAppointment: React.FC = () => {
                           </p>
 
                           <p className="mt-1 text-[10px] text-[#8E7A85] sm:text-xs">
-                            {formatDuration(
-                              service.duration
-                            )}
-
+                            {formatDuration(service.duration)}
                             {quantity > 1 &&
                               ` × ${quantity}`}
                           </p>
@@ -613,8 +769,6 @@ const BookAppointment: React.FC = () => {
                     </div>
                   ))}
                 </div>
-
-                {/* PRICE SUMMARY */}
 
                 <div className="space-y-3 border-t border-[#F0DCE3] bg-[#FFF7F8] px-4 py-5 sm:px-6 sm:py-6">
                   <div className="flex items-center justify-between gap-3 text-xs text-[#623848] sm:text-sm">
@@ -640,9 +794,7 @@ const BookAppointment: React.FC = () => {
                 </div>
               </div>
 
-              {/* =====================================
-                  CHOOSE DATE & TIME
-              ===================================== */}
+              {/* CHOOSE DATE & TIME */}
 
               <div className="w-full min-w-0 overflow-hidden rounded-[18px] border border-[#EAC5D0] bg-white/95 p-4 shadow-[0_10px_30px_rgba(112,43,68,0.08)] sm:rounded-[24px] sm:p-6">
 
@@ -676,6 +828,9 @@ const BookAppointment: React.FC = () => {
                       onChange={event => {
                         setDate(event.target.value);
                         setTime('');
+                        setAvailableTimes([]);
+                        setLoadedAvailabilityKey('');
+                        setAvailabilityError('');
                       }}
                       className="
                         block h-12
@@ -720,7 +875,58 @@ const BookAppointment: React.FC = () => {
                   </div>
 
                   <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
-                    {availableTimes.length > 0 ? (
+                    {!date ? (
+                      <p className="col-span-full rounded-xl bg-[#FFF7F8] px-3 py-5 text-center text-xs leading-relaxed text-[#8E7A85] sm:px-4 sm:py-6 sm:text-sm">
+                        Select your preferred date to see
+                        available appointment times.
+                      </p>
+                    ) : !validDuration ? (
+                      <p className="col-span-full rounded-xl border border-[#EAC5D0] bg-[#FFF7F8] px-3 py-5 text-center text-xs leading-relaxed text-[#963F60] sm:px-4 sm:py-6 sm:text-sm">
+                        Your selected services exceed the
+                        maximum appointment duration of
+                        120 minutes. Please adjust your
+                        services before choosing a time.
+                      </p>
+                    ) : isLoadingTimes ||
+                      loadedAvailabilityKey !== availabilityKey &&
+                      !availabilityError ? (
+                      <div
+                        className="col-span-full flex items-center justify-center gap-3 rounded-xl bg-[#FFF7F8] px-3 py-6 text-sm text-[#963F60]"
+                        role="status"
+                      >
+                        <Loader2
+                          size={19}
+                          className="animate-spin"
+                        />
+                        Checking available times...
+                      </div>
+                    ) : availabilityError ? (
+                      <div
+                        className="col-span-full rounded-xl border border-[#EAC5D0] bg-[#FFF7F8] px-4 py-5 text-center"
+                        role="alert"
+                      >
+                        <p className="text-xs leading-relaxed text-[#963F60] sm:text-sm">
+                          {availabilityError}
+                        </p>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLoadedAvailabilityKey('');
+                            setAvailabilityError('');
+                            setDate(current => {
+                              // Trigger a fresh request without
+                              // changing the selected calendar date.
+                              return current;
+                            });
+                            window.location.reload();
+                          }}
+                          className="mt-3 rounded-full border border-[#963F60] px-5 py-2 text-xs font-semibold text-[#963F60] transition-colors hover:bg-[#F7DDE4]"
+                        >
+                          Try Again
+                        </button>
+                      </div>
+                    ) : availableTimes.length > 0 ? (
                       availableTimes.map(slot => {
                         const isSelected = time === slot;
 
@@ -762,9 +968,8 @@ const BookAppointment: React.FC = () => {
                       })
                     ) : (
                       <p className="col-span-full rounded-xl bg-[#FFF7F8] px-3 py-5 text-center text-xs leading-relaxed text-[#8E7A85] sm:px-4 sm:py-6 sm:text-sm">
-                        {date
-                          ? 'No appointment times are available for this date. Please choose another day.'
-                          : 'Select your preferred date to see available appointment times.'}
+                        No appointment times are available
+                        for this date. Please choose another day.
                       </p>
                     )}
                   </div>
@@ -772,7 +977,8 @@ const BookAppointment: React.FC = () => {
 
                 {/* SELECTED APPOINTMENT */}
 
-                {date && time && (
+                {date && time && availabilityReady &&
+                  availableTimes.includes(time) && (
                   <div className="mt-5 min-w-0 rounded-xl border border-[#EAC5D0] bg-[#F7DDE4]/60 p-3 sm:mt-6 sm:p-4">
                     <div className="flex min-w-0 items-start gap-3">
                       <CheckCircle2
@@ -804,14 +1010,9 @@ const BookAppointment: React.FC = () => {
               </div>
             </div>
 
-            {/* =====================================
-                RIGHT COLUMN
-                CUSTOMER INFORMATION
-            ===================================== */}
+            {/* RIGHT COLUMN — CUSTOMER INFORMATION */}
 
             <div className="w-full min-w-0 overflow-hidden rounded-[18px] border border-[#EAC5D0] bg-white/95 p-4 shadow-[0_10px_30px_rgba(112,43,68,0.08)] sm:rounded-[24px] sm:p-8">
-
-              {/* HEADER */}
 
               <div className="mb-6 flex min-w-0 items-center gap-3 border-b border-[#F0DCE3] pb-5 sm:mb-7 sm:pb-6">
                 <UserRound
@@ -829,8 +1030,6 @@ const BookAppointment: React.FC = () => {
                   </p>
                 </div>
               </div>
-
-              {/* CUSTOMER FORM */}
 
               <form
                 onSubmit={handleSubmit}
@@ -854,10 +1053,7 @@ const BookAppointment: React.FC = () => {
                     placeholder="Enter your full name"
                     value={form.name}
                     onChange={event =>
-                      updateForm(
-                        'name',
-                        event.target.value
-                      )
+                      updateForm('name', event.target.value)
                     }
                     required
                     className={inputStyles}
@@ -881,10 +1077,7 @@ const BookAppointment: React.FC = () => {
                     placeholder="you@example.com"
                     value={form.email}
                     onChange={event =>
-                      updateForm(
-                        'email',
-                        event.target.value
-                      )
+                      updateForm('email', event.target.value)
                     }
                     required
                     className={inputStyles}
@@ -908,10 +1101,7 @@ const BookAppointment: React.FC = () => {
                     placeholder="(555) 555-5555"
                     value={form.phone}
                     onChange={event =>
-                      updateForm(
-                        'phone',
-                        event.target.value
-                      )
+                      updateForm('phone', event.target.value)
                     }
                     required
                     className={inputStyles}
@@ -926,7 +1116,6 @@ const BookAppointment: React.FC = () => {
                     className="text-sm font-semibold text-[#623848]"
                   >
                     Appointment Notes
-
                     <span className="ml-2 text-xs font-normal text-[#9B8791]">
                       Optional
                     </span>
@@ -937,10 +1126,7 @@ const BookAppointment: React.FC = () => {
                     placeholder="Tell us about your nail ideas, preferred designs, or anything we should know..."
                     value={form.notes}
                     onChange={event =>
-                      updateForm(
-                        'notes',
-                        event.target.value
-                      )
+                      updateForm('notes', event.target.value)
                     }
                     rows={4}
                     className="
@@ -956,9 +1142,7 @@ const BookAppointment: React.FC = () => {
                   />
                 </div>
 
-                {/* =====================================
-                    INSPIRATION PHOTO
-                ===================================== */}
+                {/* INSPIRATION PHOTO */}
 
                 <div className="w-full min-w-0 border-t border-[#F0DCE3] pt-6">
 
@@ -1019,7 +1203,6 @@ const BookAppointment: React.FC = () => {
                           void handleInspirationUpload(
                             event.target.files?.[0]
                           );
-
                           event.target.value = '';
                         }}
                         className="
@@ -1086,17 +1269,16 @@ const BookAppointment: React.FC = () => {
                   )}
                 </div>
 
-                {/* =====================================
-                    REQUEST APPOINTMENT BUTTON
-                ===================================== */}
+                {/* REQUEST APPOINTMENT BUTTON */}
 
                 <Button
                   type="submit"
                   disabled={
                     isSubmitting ||
                     isUploading ||
-                    !date ||
-                    !time
+                    !availabilityReady ||
+                    !time ||
+                    !availableTimes.includes(time)
                   }
                   className="
                     h-12 w-full min-w-0
@@ -1131,7 +1313,6 @@ const BookAppointment: React.FC = () => {
                         size={18}
                         className="shrink-0 animate-spin"
                       />
-
                       Sending Request...
                     </span>
                   ) : (
@@ -1140,9 +1321,7 @@ const BookAppointment: React.FC = () => {
                         size={17}
                         className="shrink-0"
                       />
-
                       Request Appointment
-
                       <ArrowRight
                         size={16}
                         className="shrink-0"
@@ -1150,8 +1329,6 @@ const BookAppointment: React.FC = () => {
                     </span>
                   )}
                 </Button>
-
-                {/* APPOINTMENT REVIEW NOTE */}
 
                 <p className="text-center text-[11px] leading-relaxed text-[#8E7A85] sm:text-xs">
                   Your request will be reviewed by Briana.
@@ -1161,9 +1338,7 @@ const BookAppointment: React.FC = () => {
             </div>
           </div>
 
-          {/* =====================================
-              BOTTOM TRUST NOTES
-          ===================================== */}
+          {/* BOTTOM TRUST NOTES */}
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-3 text-[10px] text-[#8E7A85] sm:mt-10 sm:gap-x-6 sm:text-xs">
             <span className="flex items-center gap-2">
