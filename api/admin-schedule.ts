@@ -64,14 +64,32 @@ function isValidDay(
   );
 }
 
+// PostgreSQL BIGSERIAL IDs may be returned as
+// strings by the Neon database driver.
+//
+// Accept positive, safe numeric IDs and valid
+// positive decimal strings within BIGINT range.
 function isValidId(
   value: unknown
-): value is number {
-  return (
-    typeof value === 'number' &&
-    Number.isSafeInteger(value) &&
-    value > 0
-  );
+): value is number | string {
+  if (typeof value === 'number') {
+    return (
+      Number.isSafeInteger(value) &&
+      value > 0
+    );
+  }
+
+  if (typeof value === 'string') {
+    if (!/^[1-9]\d{0,18}$/.test(value)) {
+      return false;
+    }
+
+    return (
+      BigInt(value) <= 9223372036854775807n
+    );
+  }
+
+  return false;
 }
 
 function getDateRangeDays(
@@ -350,8 +368,6 @@ export default async function handler(
     //
     // add: makes a specific time available
     // remove: makes a specific time unavailable
-    //
-    // Existing reservations remain protected.
     // ==========================================
 
     if (action === 'override-set') {
