@@ -1,3 +1,4 @@
+
 export interface CreateAppointmentData {
   customerName: string;
   customerEmail: string;
@@ -17,8 +18,11 @@ const DEFAULT_TIME_SLOTS = [
 ];
 
 export const getAvailableTimeSlots = async (): Promise<string[]> => DEFAULT_TIME_SLOTS;
+
 export const getBookedSlotsForDate = async (_date: string): Promise<string[]> => [];
+
 export const getBlockedDates = async (): Promise<any[]> => [];
+
 export const getBlockedTimes = async (): Promise<any[]> => [];
 
 export const createAppointment = async (data: CreateAppointmentData) => {
@@ -27,17 +31,78 @@ export const createAppointment = async (data: CreateAppointmentData) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
+
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Unable to create booking');
+
+  if (!response.ok) {
+    throw new Error(result.error || 'Unable to create booking');
+  }
+
   return result;
 };
 
-export const getAppointments = async (): Promise<any[]> => [];
-export const updateAppointmentStatus = async (_appointmentId: string, _status: string) => {
-  throw new Error('Confirm appointments from the secure link in the notification email.');
+// ============================================
+// ADMIN APPOINTMENTS — NEON DATABASE
+// ============================================
+
+export const getAppointments = async (): Promise<any[]> => {
+  const response = await fetch('/api/admin-appointments', {
+    method: 'GET',
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error(
+        'Your admin session has expired. Please log in again.'
+      );
+    }
+
+    throw new Error(
+      'Unable to load appointments from the database.'
+    );
+  }
+
+  const result = await response.json();
+
+  if (
+    result.success !== true ||
+    !Array.isArray(result.appointments)
+  ) {
+    throw new Error(
+      'Invalid appointment data received.'
+    );
+  }
+
+  return result.appointments;
 };
+
+export const updateAppointmentStatus = async (
+  _appointmentId: string,
+  _status: string
+) => {
+  throw new Error(
+    'Confirm appointments from the secure link in the notification email.'
+  );
+};
+
 export const getAppointmentById = async () => null;
-export const addBlockedDate = async (_date: string, _reason?: string) => null;
-export const removeBlockedDate = async (_id: string) => undefined;
-export const addBlockedTime = async (_time: string, _date: string) => null;
-export const removeBlockedTime = async (_id: string) => undefined;
+
+export const addBlockedDate = async (
+  _date: string,
+  _reason?: string
+) => null;
+
+export const removeBlockedDate = async (
+  _id: string
+) => undefined;
+
+export const addBlockedTime = async (
+  _time: string,
+  _date: string
+) => null;
+
+export const removeBlockedTime = async (
+  _id: string
+) => undefined;
