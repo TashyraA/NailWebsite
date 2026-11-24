@@ -18,7 +18,8 @@ import { escapeHtml, sendEmail } from './_email.js';
    - Enforce a 15-minute booking buffer
    - Enforce 24-hour advance notice
    - Save pending requests
-   - Generate private review links
+   - Preserve private review tokens for compatibility
+   - Open admin dashboard from owner email
    - Notify Briana and the customer
    - No payment required at request time
 ========================================= */
@@ -86,6 +87,10 @@ class RequestValidationError extends Error {
 
 /* =====================================
    PRIVATE REVIEW TOKEN
+
+   Retained for compatibility with the
+   existing database and legacy endpoint.
+   The new admin email does not expose it.
 ===================================== */
 
 function createReviewToken() {
@@ -95,7 +100,7 @@ function createReviewToken() {
     .update(token)
     .digest('hex');
 
-  return { token, tokenHash };
+  return { tokenHash };
 }
 
 /* =====================================
@@ -792,11 +797,14 @@ export default async function handler(
     );
 
     /* =====================================
-       GENERATE PRIVATE REVIEW LINK
+       GENERATE LEGACY REVIEW TOKEN
+
+       Preserve existing database fields.
+       The admin email uses the protected
+       dashboard rather than this token.
     ===================================== */
 
-    const { token, tokenHash } =
-      createReviewToken();
+    const { tokenHash } = createReviewToken();
 
     const reviewTokenExpiresAt = new Date(
       Date.now() +
@@ -878,7 +886,11 @@ export default async function handler(
     );
 
     /* =====================================
-       BUILD PRIVATE REVIEW URL
+       BUILD ADMIN DASHBOARD REVIEW URL
+
+       Opens the existing protected admin
+       appointment page with the request
+       ID selected. No token in the email.
     ===================================== */
 
     const configuredUrl =
@@ -891,7 +903,7 @@ export default async function handler(
     );
 
     const reviewUrl = new URL(
-      '/api/review-appointment',
+      '/admin/appointments',
       baseUrl
     );
 
@@ -900,12 +912,7 @@ export default async function handler(
       appointmentId
     );
 
-    reviewUrl.searchParams.set(
-      'token',
-      token
-    );
-
-    const privateReviewLink =
+    const adminReviewLink =
       reviewUrl.toString();
 
     /* =====================================
@@ -949,7 +956,7 @@ export default async function handler(
     );
 
     const safeReviewLink = escapeHtml(
-      privateReviewLink
+      adminReviewLink
     );
 
     const inspirationUrl =
@@ -1070,8 +1077,10 @@ export default async function handler(
       </p>
 
       <p>
-        Use the private review link
-        to review this appointment request.
+        Open your admin dashboard to
+        review this appointment, set the
+        deposit amount, and approve or
+        decline the request.
       </p>
 
       <p style="margin:24px 0;">
@@ -1095,10 +1104,11 @@ export default async function handler(
         font-size:13px;
         color:#806B75;
       ">
-        This private review link
-        expires after
-        ${REVIEW_LINK_HOURS} hours.
-        Do not share it with customers.
+        This button opens your
+        InLoveNailz admin dashboard.
+        Sign in as an administrator
+        if prompted. Do not share
+        this notification with customers.
       </p>
     `);
 
