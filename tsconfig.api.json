@@ -1,3 +1,4 @@
+
 {
   "compilerOptions": {
     "target": "ES2022",
@@ -12,19 +13,10 @@
     "noUnusedParameters": false
   },
   "include": [
-    "api/admin-services.ts",
-    "api/_admin-auth.ts",
-    "api/admin-logout.ts",
-    "api/admin-session.ts",
-    "api/admin-login.ts",
-    "api/services.ts",
-    "api/review-appointment.ts",
-    "api/test-database.ts",
-    "api/approve-appointment.ts",
-    "api/request-appointment.ts",
-    "api/stripe-webhook.ts",
-    "api/_balance-payment.ts",
-    "api/_booking.ts",
-    "api/_email.ts"
+    "api/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
   ]
 }

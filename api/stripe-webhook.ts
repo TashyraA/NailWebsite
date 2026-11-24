@@ -2,6 +2,7 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import { verifyBooking, appUrl } from './_booking.js';
 import { escapeHtml, sendEmail } from './_email.js';
+import { handleNeonDepositWebhook } from './_neon-deposit-webhook.js';
 
 /* =========================================
    INLOVENAILZ BY BRIANA
@@ -219,6 +220,18 @@ export default async function handler(
     }
 
     const paymentType = metadata.payment_type;
+
+        /* =====================================
+       NEW NEON APPOINTMENT DEPOSITS
+    ===================================== */
+
+    if (paymentType === 'neon_appointment_deposit') {
+      const result = await handleNeonDepositWebhook(
+        event
+      );
+
+      return res.status(200).json(result);
+    }
 
     if (
       paymentType !== 'deposit' &&

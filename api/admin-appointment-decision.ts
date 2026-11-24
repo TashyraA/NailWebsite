@@ -2,24 +2,27 @@
 import { neon } from '@neondatabase/serverless';
 import { requireAdmin } from './_admin-auth.js';
 
-/* =========================================
-   INLOVENAILZ BY BRIANA
+/*
+=========================================
+ INLOVENAILZ BY BRIANA
 
-   SECURE APPOINTMENT DECISION API
+ SECURE APPOINTMENT DECISION API
 
-   - Administrator access required
-   - Same-origin protection
-   - Approve with custom deposit
-   - Decline pending requests
-   - Read dynamic weekly schedule
-   - Respect date-specific overrides
-   - Respect blocked days and hours
-   - Validate appointment duration
-   - Enforce 24-hour advance notice
-   - Maintain 15-minute appointment buffer
-   - Prevent overlapping reservations
-   - No Stripe payment in this step
-========================================= */
+ - Administrator access required
+ - Same-origin protection
+ - Approve with custom deposit
+ - Decline pending requests
+ - Read dynamic weekly schedule
+ - Respect date-specific overrides
+ - Respect blocked days and hours
+ - Validate appointment duration
+ - Enforce 24-hour advance notice
+ - Maintain 15-minute appointment buffer
+ - Prevent overlapping reservations
+ - Set deposit deadline during approval
+ - No Stripe payment in this step
+=========================================
+*/
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -28,6 +31,9 @@ const MAX_BODY_BYTES = 10_000;
 const MINIMUM_NOTICE_HOURS = 24;
 const SLOT_DURATION_MINUTES = 120;
 const BUFFER_MINUTES = 15;
+
+const DEPOSIT_PAYMENT_HOURS = 24;
+const DEPOSIT_CUTOFF_BEFORE_APPOINTMENT_HOURS = 1;
 
 type DecisionBody = {
   appointmentId?: unknown;
@@ -43,6 +49,7 @@ type DecisionRow = {
   appointment_time: string;
   starts_at: string | null;
   ends_at: string | null;
+  deposit_expires_at: string | null;
 };
 
 function isRecord(
@@ -112,6 +119,7 @@ function respondWithDecision(
       appointmentTime: appointment.appointment_time,
       startsAt: appointment.starts_at,
       endsAt: appointment.ends_at,
+      depositExpiresAt: appointment.deposit_expires_at,
     },
   });
 }
@@ -216,11 +224,13 @@ export default async function handler(
 
     const sql = neon(databaseUrl);
 
-    /* =====================================
-       DECLINE A PENDING REQUEST
+    /*
+    =====================================
+     DECLINE A PENDING REQUEST
 
-       Preserve the existing decline logic.
-    ===================================== */
+     Preserve the existing decline logic.
+    =====================================
+    */
 
     if (action === 'decline') {
       const result = await sql`
@@ -240,7 +250,8 @@ export default async function handler(
           appointment_date::text AS appointment_date,
           appointment_time,
           starts_at,
-          ends_at
+          ends_at,
+          deposit_expires_at
       `;
 
       if (result.length === 0) {
@@ -258,19 +269,32 @@ export default async function handler(
       );
     }
 
-    /* =====================================
-       APPROVE A PENDING REQUEST
+    /*
+    =====================================
+     APPROVE A PENDING REQUEST
 
-       PostgreSQL calculates appointment
-       timestamps in America/New_York.
+     PostgreSQL calculates appointment
+     timestamps in America/New_York.
 
-       Approval must follow the same dynamic
-       schedule as customer availability.
+     Approval must follow the same dynamic
+     schedule as customer availability.
 
-       The conditional UPDATE and database
-       exclusion constraint protect against
-       overlapping active reservations.
-    ===================================== */
+     The conditional UPDATE and database
+     exclusion constraint protect against
+     overlapping active reservations.
+
+     Deposit deadline:
+       Earlier of:
+       - 24 hours after approval
+       - 1 hour before appointment start
+
+     Deadline is stored atomically with
+     the approval status.
+
+     Automatic expiration is handled
+     separately, not in this endpoint.
+    =====================================
+    */
 
     const depositAmount = depositCents! / 100;
 
@@ -310,10 +334,10 @@ export default async function handler(
           candidate.requested_start,
 
           candidate.requested_start +
-            (
-              candidate.duration_minutes
-              * INTERVAL '1 minute'
-            ) AS requested_end
+          (
+            candidate.duration_minutes
+            * INTERVAL '1 minute'
+          ) AS requested_end
 
         FROM candidate
 
@@ -330,17 +354,18 @@ export default async function handler(
           AND ${depositAmount}::numeric <=
             candidate.total_price
 
-          /* =================================
-             VALID WEEKLY OR ADDED TIME
+          /*
+          =================================
+           VALID WEEKLY OR ADDED TIME
 
-             A scheduled start time is not
-             an operating-hours cutoff.
-          ================================= */
+           A scheduled start time is not
+           an operating-hours cutoff.
+          =================================
+          */
 
           AND (
             EXISTS (
               SELECT 1
-
               FROM salon_weekly_schedule weekly
 
               WHERE weekly.is_active = TRUE
@@ -356,7 +381,6 @@ export default async function handler(
 
             OR EXISTS (
               SELECT 1
-
               FROM salon_schedule_overrides added
 
               WHERE added.override_date =
@@ -369,13 +393,14 @@ export default async function handler(
             )
           )
 
-          /* =================================
-             DATE-SPECIFIC REMOVED TIMES
-          ================================= */
+          /*
+          =================================
+           DATE-SPECIFIC REMOVED TIMES
+          =================================
+          */
 
           AND NOT EXISTS (
             SELECT 1
-
             FROM salon_schedule_overrides removed
 
             WHERE removed.override_date =
@@ -387,9 +412,11 @@ export default async function handler(
               AND removed.action = 'remove'
           )
 
-          /* =================================
-             24-HOUR ADVANCE NOTICE
-          ================================= */
+          /*
+          =================================
+           24-HOUR ADVANCE NOTICE
+          =================================
+          */
 
           AND candidate.requested_start >=
             NOW() +
@@ -398,29 +425,32 @@ export default async function handler(
               * INTERVAL '1 hour'
             )
 
-          /* =================================
-             REJECT NONEXISTENT DST TIMES
-          ================================= */
+          /*
+          =================================
+           REJECT NONEXISTENT DST TIMES
+          =================================
+          */
 
           AND (
             candidate.requested_start
             AT TIME ZONE 'America/New_York'
           ) = candidate.local_start
 
-          /* =================================
-             EXISTING RESERVATION CONFLICTS
+          /*
+          =================================
+           EXISTING RESERVATION CONFLICTS
 
-             Only awaiting_deposit and
-             confirmed appointments reserve
-             an appointment time.
+           Only awaiting_deposit and
+           confirmed appointments reserve
+           an appointment time.
 
-             Apply 15-minute buffer before
-             and after existing reservations.
-          ================================= */
+           Apply 15-minute buffer before
+           and after existing reservations.
+          =================================
+          */
 
           AND NOT EXISTS (
             SELECT 1
-
             FROM appointment_requests existing
 
             WHERE existing.id <> candidate.id
@@ -450,21 +480,22 @@ export default async function handler(
                 ) > candidate.requested_start
           )
 
-          /* =================================
-             BLOCKED DAYS AND HOURS
+          /*
+          =================================
+           BLOCKED DAYS AND HOURS
 
-             A full-day block rejects every
-             appointment on that date.
+           A full-day block rejects every
+           appointment on that date.
 
-             A partial block rejects an
-             appointment when its duration
-             plus the 15-minute buffer
-             overlaps the blocked period.
-          ================================= */
+           A partial block rejects an
+           appointment when its duration
+           plus the 15-minute buffer
+           overlaps the blocked period.
+          =================================
+          */
 
           AND NOT EXISTS (
             SELECT 1
-
             FROM salon_schedule_blocks block
 
             WHERE block.block_date =
@@ -527,6 +558,19 @@ export default async function handler(
 
         ends_at = eligible.requested_end,
 
+        deposit_expires_at = LEAST(
+          NOW() +
+          (
+            ${DEPOSIT_PAYMENT_HOURS}
+            * INTERVAL '1 hour'
+          ),
+          eligible.requested_start -
+          (
+            ${DEPOSIT_CUTOFF_BEFORE_APPOINTMENT_HOURS}
+            * INTERVAL '1 hour'
+          )
+        ),
+
         review_token_hash = NULL,
 
         review_token_expires_at = NULL
@@ -547,7 +591,8 @@ export default async function handler(
 
         appointment.appointment_time,
         appointment.starts_at,
-        appointment.ends_at
+        appointment.ends_at,
+        appointment.deposit_expires_at
     `;
 
     if (result.length === 0) {
