@@ -25,6 +25,7 @@ import {
   Mail,
   Phone,
   RefreshCw,
+  Send,
 } from 'lucide-react';
 
 type Appointment = {
@@ -53,6 +54,11 @@ type Decision = {
   appointmentId: string;
   action: 'approve' | 'decline';
   depositAmount?: number;
+};
+
+type DepositLinkResult = {
+  appointmentId: string;
+  message: string;
 };
 
 function money(value: number | null | undefined): string {
@@ -99,21 +105,19 @@ function statusStyle(status: string): string {
   }
 }
 
-async function decideAppointment(
-  decision: Decision
-): Promise<void> {
-  const response = await fetch(
-    '/api/admin-appointment-decision',
-    {
-      method: 'POST',
-      credentials: 'same-origin',
-      cache: 'no-store',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(decision),
-    }
-  );
+async function postAdminAction(
+  endpoint: string,
+  payload: Record<string, unknown>
+): Promise<any> {
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    credentials: 'same-origin',
+    cache: 'no-store',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
 
   const result = await response.json().catch(() => null);
 
@@ -121,9 +125,67 @@ async function decideAppointment(
     throw new Error(
       typeof result?.error === 'string'
         ? result.error
-        : 'Unable to update this appointment.'
+        : 'Unable to complete this action.'
     );
   }
+
+  return result;
+}
+
+async function decideAppointment(
+  decision: Decision
+): Promise<void> {
+  await postAdminAction(
+    '/api/admin-appointment-decision',
+    { ...decision }
+  );
+}
+
+async function sendDepositLink(
+  appointmentId: string
+): Promise<DepositLinkResult> {
+  // The existing backend creates or safely reuses
+  // an approved Stripe Checkout Session.
+  const checkout = await postAdminAction(
+    '/api/admin-deposit-checkout',
+    { appointmentId }
+  );
+
+  if (
+    checkout.appointmentId !== appointmentId ||
+    typeof checkout.checkoutUrl !== 'string' ||
+    !checkout.checkoutUrl.startsWith(
+      'https://checkout.stripe.com/'
+    )
+  ) {
+    throw new Error(
+      'Checkout verification failed. Review Stripe before sending.'
+    );
+  }
+
+  // The email endpoint independently verifies
+  // the stored session before submitting to Resend.
+  const email = await postAdminAction(
+    '/api/admin-send-deposit-link',
+    { appointmentId }
+  );
+
+  if (
+    email.appointmentId !== appointmentId ||
+    email.emailAccepted !== true
+  ) {
+    throw new Error(
+      'Email acceptance could not be verified. Check Resend.'
+    );
+  }
+
+  return {
+    appointmentId,
+    message:
+      typeof email.message === 'string'
+        ? email.message
+        : 'Resend accepted the deposit payment email.',
+  };
 }
 
 function serviceItems(value: unknown): any[] {
@@ -154,6 +216,10 @@ const AdminAppointments: React.FC = () => {
 
   const [depositInputs, setDepositInputs] = useState<
     Record<string, string>
+  >({});
+
+  const [emailAcceptedIds, setEmailAcceptedIds] = useState<
+    Record<string, boolean>
   >({});
 
   const {
@@ -193,6 +259,35 @@ const AdminAppointments: React.FC = () => {
     onError: (mutationError: Error) => {
       toast({
         title: 'Unable to update appointment',
+        description: mutationError.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const depositLinkMutation = useMutation({
+    mutationFn: sendDepositLink,
+
+    onSuccess: async result => {
+      setEmailAcceptedIds(previous => ({
+        ...previous,
+        [result.appointmentId]: true,
+      }));
+
+      await queryClient.invalidateQueries({
+        queryKey: ['appointments'],
+      });
+
+      toast({
+        title: 'Deposit email accepted!',
+        description:
+          'Resend accepted the payment email. Customer delivery is not yet confirmed.',
+      });
+    },
+
+    onError: (mutationError: Error) => {
+      toast({
+        title: 'Deposit link needs attention',
         description: mutationError.message,
         variant: 'destructive',
       });
@@ -241,14 +336,15 @@ const AdminAppointments: React.FC = () => {
 
     if (
       !Number.isFinite(amount) ||
-      amount <= 0 ||
+      amount < 0.5 ||
       amount > appointment.totalPrice
     ) {
       toast({
         title: 'Invalid deposit amount',
-        description: `Enter an amount greater than $0 and no more than ${money(
-          appointment.totalPrice
-        )}.`,
+        description:
+          `Enter a deposit of at least $0.50 and no more than ${money(
+            appointment.totalPrice
+          )}.`,
         variant: 'destructive',
       });
       return;
@@ -284,6 +380,47 @@ const AdminAppointments: React.FC = () => {
       appointmentId: appointment.id,
       action: 'decline',
     });
+  };
+
+  const handleSendDepositLink = (
+    appointment: Appointment
+  ) => {
+    if (
+      appointment.status !== 'awaiting_deposit' ||
+      appointment.depositPaidAt ||
+      emailAcceptedIds[appointment.id]
+    ) {
+      return;
+    }
+
+    if (
+      !appointment.depositExpiresAt ||
+      !Number.isFinite(
+        Date.parse(appointment.depositExpiresAt)
+      ) ||
+      Date.parse(appointment.depositExpiresAt) <=
+        Date.now() + 31 * 60 * 1000
+    ) {
+      toast({
+        title: 'Deposit deadline needs review',
+        description:
+          'The payment deadline is missing or too close. Do not send an expired checkout link.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Create or reuse a secure Stripe checkout for ${appointment.customerName} and email the ${money(
+        appointment.depositAmount
+      )} deposit link to ${appointment.customerEmail}?\n\nThis uses LIVE Stripe. The customer will only be charged if they complete checkout.\n\nIf an email was already attempted, check Resend before proceeding.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    depositLinkMutation.mutate(appointment.id);
   };
 
   return (
@@ -385,10 +522,21 @@ const AdminAppointments: React.FC = () => {
             const pending =
               appointment.status === 'pending';
 
+            const awaitingDeposit =
+              appointment.status === 'awaiting_deposit';
+
             const isUpdating =
               decisionMutation.isPending &&
               decisionMutation.variables?.appointmentId ===
                 appointment.id;
+
+            const isSending =
+              depositLinkMutation.isPending &&
+              depositLinkMutation.variables ===
+                appointment.id;
+
+            const emailAccepted =
+              emailAcceptedIds[appointment.id] === true;
 
             const services = serviceItems(
               appointment.services
@@ -574,8 +722,7 @@ const AdminAppointments: React.FC = () => {
                           </div>
                         </div>
 
-                        {appointment.status ===
-                          'awaiting_deposit' && (
+                        {awaitingDeposit && (
                           <p className="mt-3 flex items-start gap-2 text-xs text-purple-700">
                             <AlertCircle
                               size={15}
@@ -610,7 +757,7 @@ const AdminAppointments: React.FC = () => {
                           <Input
                             id={`deposit-${appointment.id}`}
                             type="number"
-                            min="0.01"
+                            min="0.50"
                             max={appointment.totalPrice}
                             step="0.01"
                             placeholder="Enter deposit amount"
@@ -661,6 +808,77 @@ const AdminAppointments: React.FC = () => {
                           >
                             Decline Request
                           </Button>
+                        </div>
+                      )}
+
+                      {awaitingDeposit && (
+                        <div className="space-y-3 rounded-xl border border-[#F0DCE3] bg-white p-4">
+                          <h3 className="text-sm font-semibold text-[#29252B]">
+                            Deposit Payment Link
+                          </h3>
+
+                          <p className="text-xs text-gray-600">
+                            Create or reuse a verified Stripe
+                            checkout and email the approved
+                            deposit link to the customer.
+                          </p>
+
+                          {appointment.depositExpiresAt && (
+                            <p className="text-xs text-gray-600">
+                              <strong>Payment deadline:</strong>{' '}
+                              {new Date(
+                                appointment.depositExpiresAt
+                              ).toLocaleString()}
+                            </p>
+                          )}
+
+                          {emailAccepted ? (
+                            <div className="flex items-start gap-2 rounded-lg bg-green-50 p-3 text-xs text-green-800">
+                              <CheckCircle2
+                                size={16}
+                                className="shrink-0"
+                              />
+                              Resend accepted the payment email
+                              during this dashboard session.
+                              Delivery is not yet confirmed.
+                            </div>
+                          ) : (
+                            <Button
+                              type="button"
+                              className="w-full bg-[#963F60] text-white hover:bg-[#79324F]"
+                              disabled={
+                                decisionMutation.isPending ||
+                                depositLinkMutation.isPending
+                              }
+                              onClick={() =>
+                                handleSendDepositLink(
+                                  appointment
+                                )
+                              }
+                            >
+                              {isSending ? (
+                                <Loader2
+                                  size={16}
+                                  className="mr-2 animate-spin"
+                                />
+                              ) : (
+                                <Send
+                                  size={16}
+                                  className="mr-2"
+                                />
+                              )}
+
+                              {isSending
+                                ? 'Preparing Payment Email...'
+                                : 'Create Checkout & Send Link'}
+                            </Button>
+                          )}
+
+                          <p className="text-xs text-amber-700">
+                            If an earlier email attempt failed
+                            or timed out, check Stripe and
+                            Resend before trying again.
+                          </p>
                         </div>
                       )}
                     </div>
