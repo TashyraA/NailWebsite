@@ -1,20 +1,23 @@
 
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
-import { requireAdmin } from './_admin-auth.js';
 
 /* =========================================
    INLOVENAILZ BY BRIANA
    SECURE APPOINTMENT REVIEW API
 
-   STEP 1: READ-ONLY REVIEW
-
-   - Requires administrator login
-   - Verifies private review token
+   - Read-only appointment review
+   - Requires a valid private review token
    - Checks review link expiration
    - Retrieves appointment from Neon
-   - Does not change appointment status
+   - Does not require an admin session to
+     view a token-authorized appointment
+   - Does not approve or decline requests
    - Does not process payments
+
+   IMPORTANT:
+   Appointment decisions remain protected
+   by api/admin-appointment-decision.ts.
 ========================================= */
 
 type AppointmentRow = {
@@ -90,6 +93,7 @@ export default async function handler(
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
 
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
@@ -98,12 +102,6 @@ export default async function handler(
       success: false,
       error: 'Method not allowed',
     });
-  }
-
-  // Briana must be logged in to view
-  // private appointment information.
-  if (!requireAdmin(req, res)) {
-    return;
   }
 
   const id = req.query?.id;
@@ -122,8 +120,7 @@ export default async function handler(
   }
 
   try {
-    const databaseUrl =
-      process.env.DATABASE_URL;
+    const databaseUrl = process.env.DATABASE_URL;
 
     if (!databaseUrl) {
       throw new Error(
@@ -185,12 +182,13 @@ export default async function handler(
     const expiresAt =
       appointment.review_token_expires_at;
 
+    const expirationTime = expiresAt
+      ? new Date(expiresAt).getTime()
+      : NaN;
+
     if (
-      !expiresAt ||
-      !Number.isFinite(
-        new Date(expiresAt).getTime()
-      ) ||
-      new Date(expiresAt).getTime() <= Date.now()
+      !Number.isFinite(expirationTime) ||
+      expirationTime <= Date.now()
     ) {
       return res.status(410).json({
         success: false,
@@ -198,8 +196,6 @@ export default async function handler(
       });
     }
 
-    // Return only the fields Briana needs.
-    // Never expose stored token hashes.
     return res.status(200).json({
       success: true,
       appointment: {
