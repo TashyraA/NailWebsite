@@ -1,71 +1,77 @@
 
-import React, { useEffect, useRef, useState } from 'react';
+import React from 'react';
 import {
   useMutation,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+
+import { getAppointments } from '@/services/appointmentService';
 import AdminLayout from '@/components/admin/AdminLayout';
 import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { getAppointments } from '@/services/appointmentService';
-import { useToast } from '@/hooks/use-toast';
-import { formatDate, formatTime12Hour } from '@/utils/dateTime';
+
 import {
-  AlertCircle,
-  Calendar,
-  CheckCircle2,
-  Clock,
-  DollarSign,
-  Loader2,
+  CalendarDays,
+  Clock3,
   Mail,
   Phone,
-  RefreshCw,
-  Send,
+  DollarSign,
+  ClipboardList,
+  Search,
+  Heart,
+  Scissors,
+  Image as ImageIcon,
+  MessageSquareText,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  UserRound,
+  ShieldCheck,
+  XCircle,
 } from 'lucide-react';
 
-type Appointment = {
-  id: string;
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
-  appointmentDate: string;
-  appointmentTime: string;
-  services: unknown;
-  totalPrice: number;
-  durationMinutes: number | null;
-  notes: string | null;
-  inspirationUrl: string | null;
-  status: string;
-  depositAmount: number | null;
-  depositPaid: number;
-  balanceDue: number;
-  depositPaidAt: string | null;
-  depositExpiresAt: string | null;
-  confirmedAt: string | null;
-  createdAt: string;
-};
+import {
+  formatDate,
+  formatTime12Hour,
+} from '@/utils/dateTime';
 
-type Decision = {
+type StatusFilter =
+  | 'all'
+  | 'pending'
+  | 'awaiting_deposit'
+  | 'confirmed'
+  | 'declined'
+  | 'cancelled';
+
+type DecisionAction = 'approve' | 'decline';
+
+type DecisionRequest = {
   appointmentId: string;
-  action: 'approve' | 'decline';
+  action: DecisionAction;
   depositAmount?: number;
 };
 
-type DepositLinkResult = {
-  appointmentId: string;
-  message: string;
+type ApiResponse = {
+  success: boolean;
+  message?: string;
+  error?: string;
+  checkoutUrl?: string;
+  emailAccepted?: boolean;
 };
 
-function money(value: number | null | undefined): string {
-  return `$${Number(value ?? 0).toFixed(2)}`;
-}
+type CancellationRequest = {
+  appointmentId: string;
+  reason: string;
+};
 
-function statusLabel(status: string): string {
+const currency = (value: unknown): string => {
+  const number = Number(value ?? 0);
+  return `$${(
+    Number.isFinite(number) ? number : 0
+  ).toFixed(2)}`;
+};
+
+const getStatusLabel = (status: string): string => {
   switch (status) {
     case 'pending':
       return 'Pending Review';
@@ -75,160 +81,160 @@ function statusLabel(status: string): string {
       return 'Confirmed';
     case 'declined':
       return 'Declined';
-    case 'expired':
-      return 'Deposit Expired';
-    case 'completed':
-      return 'Completed';
     case 'cancelled':
       return 'Cancelled';
+    case 'completed':
+      return 'Completed';
     default:
-      return status.replace(/_/g, ' ');
+      return status || 'Unknown';
   }
-}
+};
 
-function statusStyle(status: string): string {
+const getStatusClass = (status: string): string => {
   switch (status) {
     case 'pending':
-      return 'bg-amber-100 text-amber-800';
+      return 'border-[#EBCF9D] bg-[#FFF8E9] text-[#91641E]';
     case 'awaiting_deposit':
-      return 'bg-purple-100 text-purple-800';
+      return 'border-[#D9D2ED] bg-[#F5F1FC] text-[#68538D]';
     case 'confirmed':
-      return 'bg-green-100 text-green-800';
+      return 'border-[#C7E4D2] bg-[#EFF9F2] text-[#397A53]';
     case 'declined':
-    case 'expired':
+      return 'border-[#F0C9D0] bg-[#FFF0F2] text-[#A5465B]';
     case 'cancelled':
-      return 'bg-red-100 text-red-800';
+      return 'border-[#E5DDE1] bg-[#F6F3F4] text-[#766C71]';
     case 'completed':
-      return 'bg-blue-100 text-blue-800';
+      return 'border-[#C9DDEA] bg-[#EFF7FC] text-[#42728F]';
     default:
-      return 'bg-gray-100 text-gray-700';
+      return 'border-[#E5DDE1] bg-[#F6F3F4] text-[#766C71]';
   }
-}
+};
+
+const formatAppointmentDate = (value: unknown) => {
+  if (!value) return 'Date unavailable';
+  try {
+    return formatDate(String(value));
+  } catch {
+    return String(value);
+  }
+};
+
+const formatAppointmentTime = (value: unknown) => {
+  if (!value) return 'Time unavailable';
+  try {
+    return formatTime12Hour(String(value));
+  } catch {
+    return String(value);
+  }
+};
+
+const parseDeposit = (value: string): number | null => {
+  const trimmed = value.trim();
+
+  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) {
+    return null;
+  }
+
+  const amount = Number(trimmed);
+
+  if (
+    !Number.isFinite(amount) ||
+    amount < 0.5 ||
+    !Number.isSafeInteger(Math.round(amount * 100))
+  ) {
+    return null;
+  }
+
+  return amount;
+};
 
 async function postAdminAction(
-  endpoint: string,
-  payload: Record<string, unknown>
-): Promise<any> {
-  const response = await fetch(endpoint, {
+  url: string,
+  request: unknown
+): Promise<ApiResponse> {
+  const response = await fetch(url, {
     method: 'POST',
     credentials: 'same-origin',
     cache: 'no-store',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(request),
   });
 
-  const result = await response.json().catch(() => null);
+  let result: ApiResponse;
 
-  if (!response.ok || result?.success !== true) {
+  try {
+    result = await response.json();
+  } catch {
     throw new Error(
-      typeof result?.error === 'string'
-        ? result.error
-        : 'Unable to complete this action.'
+      'Unable to read the server response. Please try again.'
+    );
+  }
+
+  if (!response.ok || !result.success) {
+    throw new Error(
+      result.error || 'Unable to update the appointment.'
     );
   }
 
   return result;
 }
 
-async function decideAppointment(
-  decision: Decision
-): Promise<void> {
-  await postAdminAction(
+async function submitAppointmentDecision(
+  request: DecisionRequest
+): Promise<ApiResponse> {
+  return postAdminAction(
     '/api/admin-appointment-decision',
-    { ...decision }
+    request
   );
 }
 
-async function sendDepositLink(
-  appointmentId: string
-): Promise<DepositLinkResult> {
-  // The existing backend creates or safely reuses
-  // an approved Stripe Checkout Session.
-  const checkout = await postAdminAction(
-    '/api/admin-deposit-checkout',
-    { appointmentId }
+async function submitAppointmentCancellation(
+  request: CancellationRequest
+): Promise<ApiResponse> {
+  return postAdminAction(
+    '/api/admin-appointment-cancel',
+    request
   );
-
-  if (
-    checkout.appointmentId !== appointmentId ||
-    typeof checkout.checkoutUrl !== 'string' ||
-    !checkout.checkoutUrl.startsWith(
-      'https://checkout.stripe.com/'
-    )
-  ) {
-    throw new Error(
-      'Checkout verification failed. Review Stripe before sending.'
-    );
-  }
-
-  // The email endpoint independently verifies
-  // the stored session before submitting to Resend.
-  const email = await postAdminAction(
-    '/api/admin-send-deposit-link',
-    { appointmentId }
-  );
-
-  if (
-    email.appointmentId !== appointmentId ||
-    email.emailAccepted !== true
-  ) {
-    throw new Error(
-      'Email acceptance could not be verified. Check Resend.'
-    );
-  }
-
-  return {
-    appointmentId,
-    message:
-      typeof email.message === 'string'
-        ? email.message
-        : 'Resend accepted the deposit payment email.',
-  };
 }
 
-function serviceItems(value: unknown): any[] {
-  if (Array.isArray(value)) {
-    return value;
-  }
-
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }
-
-  return [];
-}
-
-const AdminAppointments: React.FC = () => {
-  const { toast } = useToast();
+const AdminAppointments = () => {
   const queryClient = useQueryClient();
-  const [searchParams] = useSearchParams();
 
-  const highlightedId = searchParams.get('id');
-  const highlightedRef = useRef<HTMLDivElement | null>(null);
-  const lastScrolledId = useRef<string | null>(null);
+  const [searchTerm, setSearchTerm] =
+    React.useState('');
 
-  const [depositInputs, setDepositInputs] = useState<
-    Record<string, string>
-  >({});
+  const [statusFilter, setStatusFilter] =
+    React.useState<StatusFilter>('all');
 
-  const [emailAcceptedIds, setEmailAcceptedIds] = useState<
-    Record<string, boolean>
-  >({});
+  const [depositInputs, setDepositInputs] =
+    React.useState<Record<string, string>>({});
+
+  const [decisionErrors, setDecisionErrors] =
+    React.useState<Record<string, string>>({});
+
+  const [decisionSuccess, setDecisionSuccess] =
+    React.useState<Record<string, string>>({});
+
+  const [emailAccepted, setEmailAccepted] = React.useState<Record<string, boolean>>({});
+  const [paymentErrors, setPaymentErrors] = React.useState<Record<string, string>>({});
+  const [sendingId, setSendingId] = React.useState<string | null>(null);
+
+  const [processingId, setProcessingId] =
+    React.useState<string | null>(null);
+
+  // Cancellation form state.
+  const [cancellingId, setCancellingId] =
+    React.useState<string | null>(null);
+
+  const [cancellationReason, setCancellationReason] =
+    React.useState('');
 
   const {
     data: appointments = [],
     isLoading,
-    isFetching,
     error,
-    refetch,
-  } = useQuery<Appointment[]>({
+  } = useQuery({
     queryKey: ['appointments'],
     queryFn: () => getAppointments(),
     staleTime: 0,
@@ -237,657 +243,1302 @@ const AdminAppointments: React.FC = () => {
   });
 
   const decisionMutation = useMutation({
-    mutationFn: decideAppointment,
-
-    onSuccess: async (_result, variables) => {
-      await queryClient.invalidateQueries({
-        queryKey: ['appointments'],
-      });
-
-      toast({
-        title:
-          variables.action === 'approve'
-            ? 'Appointment approved!'
-            : 'Appointment declined',
-        description:
-          variables.action === 'approve'
-            ? 'The appointment is awaiting its deposit. No payment link has been sent yet.'
-            : 'The pending request has been declined.',
-      });
-    },
-
-    onError: (mutationError: Error) => {
-      toast({
-        title: 'Unable to update appointment',
-        description: mutationError.message,
-        variant: 'destructive',
-      });
-    },
+    mutationFn: submitAppointmentDecision,
   });
 
-  const depositLinkMutation = useMutation({
-    mutationFn: sendDepositLink,
+  const cancellationMutation = useMutation({
+    mutationFn: submitAppointmentCancellation,
+  });
 
-    onSuccess: async result => {
-      setEmailAcceptedIds(previous => ({
+  const sortedAppointments = React.useMemo(() => {
+    return [...appointments].sort((first, second) => {
+      const firstCreated = new Date(
+        first.createdAt || 0
+      ).getTime();
+
+      const secondCreated = new Date(
+        second.createdAt || 0
+      ).getTime();
+
+      return secondCreated - firstCreated;
+    });
+  }, [appointments]);
+
+  const counts = React.useMemo(() => {
+    return {
+      all: appointments.length,
+      pending: appointments.filter(
+        appointment => appointment.status === 'pending'
+      ).length,
+      awaiting_deposit: appointments.filter(
+        appointment =>
+          appointment.status === 'awaiting_deposit'
+      ).length,
+      confirmed: appointments.filter(
+        appointment => appointment.status === 'confirmed'
+      ).length,
+      declined: appointments.filter(
+        appointment => appointment.status === 'declined'
+      ).length,
+      cancelled: appointments.filter(
+        appointment => appointment.status === 'cancelled'
+      ).length,
+    };
+  }, [appointments]);
+
+  const filteredAppointments = React.useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+
+    return sortedAppointments.filter(appointment => {
+      const matchesStatus =
+        statusFilter === 'all' ||
+        appointment.status === statusFilter;
+
+      const searchableText = [
+        appointment.customerName,
+        appointment.customerEmail,
+        appointment.customerPhone,
+        appointment.appointmentDate,
+        appointment.appointmentTime,
+        appointment.status,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      const matchesSearch =
+        !query || searchableText.includes(query);
+
+      return matchesStatus && matchesSearch;
+    });
+  }, [sortedAppointments, searchTerm, statusFilter]);
+
+  const filters: {
+    key: StatusFilter;
+    label: string;
+    count: number;
+  }[] = [
+    { key: 'all', label: 'All Requests', count: counts.all },
+    { key: 'pending', label: 'Pending', count: counts.pending },
+    {
+      key: 'awaiting_deposit',
+      label: 'Awaiting Deposit',
+      count: counts.awaiting_deposit,
+    },
+    {
+      key: 'confirmed',
+      label: 'Confirmed',
+      count: counts.confirmed,
+    },
+    {
+      key: 'declined',
+      label: 'Declined',
+      count: counts.declined,
+    },
+    {
+      key: 'cancelled',
+      label: 'Cancelled',
+      count: counts.cancelled,
+    },
+  ];
+
+  const clearDecisionMessages = (id: string) => {
+    setDecisionErrors(previous => ({
+      ...previous,
+      [id]: '',
+    }));
+
+    setDecisionSuccess(previous => ({
+      ...previous,
+      [id]: '',
+    }));
+  };
+
+  const refreshAppointments = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ['appointments'],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ['admin-dashboard'],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ['admin-schedule'],
+      }),
+    ]);
+  };
+
+  const handleDecision = async (
+    appointmentId: string,
+    customerName: string,
+    action: DecisionAction,
+    totalPrice: number
+  ) => {
+    if (processingId) return;
+
+    clearDecisionMessages(appointmentId);
+
+    let depositAmount: number | undefined;
+
+    if (action === 'approve') {
+      const input = depositInputs[appointmentId] || '';
+      const parsed = parseDeposit(input);
+
+      if (parsed === null || parsed > totalPrice) {
+        setDecisionErrors(previous => ({
+          ...previous,
+          [appointmentId]:
+            'Enter a valid deposit of at least $0.50 and no more than the service total.',
+        }));
+        return;
+      }
+
+      depositAmount = parsed;
+
+      const confirmed = window.confirm(
+        `Approve the appointment request for ${customerName} with a ${currency(
+          parsed
+        )} deposit?\n\nThe request will move to Awaiting Deposit.\n\nIMPORTANT: No Stripe payment link will be created or emailed yet. The appointment will NOT be confirmed.`
+      );
+
+      if (!confirmed) return;
+    } else {
+      const confirmed = window.confirm(
+        `Decline the appointment request for ${customerName}?\n\nThis will change the request status to Declined. This action cannot be undone from this page.\n\nNo automatic customer email will be sent yet.`
+      );
+
+      if (!confirmed) return;
+    }
+
+    setProcessingId(appointmentId);
+
+    try {
+      const result = await decisionMutation.mutateAsync({
+        appointmentId,
+        action,
+        ...(action === 'approve'
+          ? { depositAmount }
+          : {}),
+      });
+
+      setDecisionSuccess(previous => ({
         ...previous,
-        [result.appointmentId]: true,
+        [appointmentId]:
+          result.message ||
+          'Appointment updated successfully.',
       }));
 
-      await queryClient.invalidateQueries({
-        queryKey: ['appointments'],
-      });
-
-      toast({
-        title: 'Deposit email accepted!',
-        description:
-          'Resend accepted the payment email. Customer delivery is not yet confirmed.',
-      });
-    },
-
-    onError: (mutationError: Error) => {
-      toast({
-        title: 'Deposit link needs attention',
-        description: mutationError.message,
-        variant: 'destructive',
-      });
-    },
-  });
-
-  useEffect(() => {
-    if (!highlightedId || isLoading) {
-      return;
+      await refreshAppointments();
+    } catch (caughtError) {
+      setDecisionErrors(previous => ({
+        ...previous,
+        [appointmentId]:
+          caughtError instanceof Error
+            ? caughtError.message
+            : 'Unable to update the appointment.',
+      }));
+    } finally {
+      setProcessingId(null);
     }
-
-    const exists = appointments.some(
-      appointment => appointment.id === highlightedId
-    );
-
-    if (
-      !exists ||
-      lastScrolledId.current === highlightedId
-    ) {
-      return;
-    }
-
-    highlightedRef.current?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'center',
-    });
-
-    lastScrolledId.current = highlightedId;
-  }, [appointments, highlightedId, isLoading]);
-
-  const handleApprove = (appointment: Appointment) => {
-    const rawAmount = (
-      depositInputs[appointment.id] ?? ''
-    ).trim();
-
-    if (!/^\d+(\.\d{1,2})?$/.test(rawAmount)) {
-      toast({
-        title: 'Enter a valid deposit',
-        description: 'Use a dollar amount such as 1.00.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    const amount = Number(rawAmount);
-
-    if (
-      !Number.isFinite(amount) ||
-      amount < 0.5 ||
-      amount > appointment.totalPrice
-    ) {
-      toast({
-        title: 'Invalid deposit amount',
-        description:
-          `Enter a deposit of at least $0.50 and no more than ${money(
-            appointment.totalPrice
-          )}.`,
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    const approved = window.confirm(
-      `Approve ${appointment.customerName}'s appointment with a ${money(
-        amount
-      )} deposit?`
-    );
-
-    if (!approved) {
-      return;
-    }
-
-    decisionMutation.mutate({
-      appointmentId: appointment.id,
-      action: 'approve',
-      depositAmount: amount,
-    });
   };
 
-  const handleDecline = (appointment: Appointment) => {
-    const declined = window.confirm(
-      `Decline ${appointment.customerName}'s appointment request?`
-    );
-
-    if (!declined) {
-      return;
+  const handleSendDepositLink = async (appointmentId: string, customerEmail: string) => {
+    if (processingId || emailAccepted[appointmentId]) return;
+    if (!window.confirm(`Create or reuse a LIVE Stripe checkout and email the deposit link to ${customerEmail}? No payment will be collected until the customer pays.`)) return;
+    setProcessingId(appointmentId);
+    setSendingId(appointmentId);
+    setPaymentErrors(previous => ({ ...previous, [appointmentId]: '' }));
+    clearDecisionMessages(appointmentId);
+    let checkoutVerified = false;
+    try {
+      const checkout = await postAdminAction('/api/admin-deposit-checkout', { appointmentId });
+      if (typeof checkout.checkoutUrl !== 'string' || !checkout.checkoutUrl.startsWith('https://checkout.stripe.com/')) {
+        throw new Error('Checkout URL could not be verified.');
+      }
+      checkoutVerified = true;
+      const email = await postAdminAction('/api/admin-send-deposit-link', { appointmentId });
+      if (email.emailAccepted !== true) throw new Error('Email acceptance could not be verified.');
+      setEmailAccepted(previous => ({ ...previous, [appointmentId]: true }));
+    } catch (error) {
+      setPaymentErrors(previous => ({ ...previous, [appointmentId]: `${checkoutVerified ? 'Checkout verified; email acceptance not confirmed.' : 'Checkout could not be verified; email step not started.'} ${error instanceof Error ? error.message : 'Unexpected error.'} Check Stripe and Resend before retrying.` }));
+    } finally {
+      try { await refreshAppointments(); } finally {
+        setSendingId(null);
+        setProcessingId(null);
+      }
     }
-
-    decisionMutation.mutate({
-      appointmentId: appointment.id,
-      action: 'decline',
-    });
   };
 
-  const handleSendDepositLink = (
-    appointment: Appointment
+  const openCancellation = (appointmentId: string) => {
+    if (processingId) return;
+
+    clearDecisionMessages(appointmentId);
+    setCancellingId(appointmentId);
+    setCancellationReason('');
+  };
+
+  const closeCancellation = () => {
+    if (processingId) return;
+
+    setCancellingId(null);
+    setCancellationReason('');
+  };
+
+  const handleCancellation = async (
+    appointmentId: string,
+    customerName: string,
+    appointmentDate: string,
+    appointmentTime: string,
+    hasPaidDeposit: boolean
   ) => {
-    if (
-      appointment.status !== 'awaiting_deposit' ||
-      appointment.depositPaidAt ||
-      emailAcceptedIds[appointment.id]
-    ) {
+    if (processingId) return;
+
+    clearDecisionMessages(appointmentId);
+
+    const reason = cancellationReason.trim();
+
+    if (reason.length < 3 || reason.length > 1000) {
+      setDecisionErrors(previous => ({
+        ...previous,
+        [appointmentId]:
+          'Enter a cancellation reason between 3 and 1000 characters.',
+      }));
       return;
     }
 
-    if (
-      !appointment.depositExpiresAt ||
-      !Number.isFinite(
-        Date.parse(appointment.depositExpiresAt)
-      ) ||
-      Date.parse(appointment.depositExpiresAt) <=
-        Date.now() + 31 * 60 * 1000
-    ) {
-      toast({
-        title: 'Deposit deadline needs review',
-        description:
-          'The payment deadline is missing or too close. Do not send an expired checkout link.',
-        variant: 'destructive',
-      });
-      return;
-    }
+    const paymentWarning = hasPaidDeposit
+      ? '\n\nWARNING: This appointment has a recorded deposit payment. Cancelling will NOT automatically refund the customer. You must review and handle any refund separately.'
+      : '\n\nNo automatic refund will be issued.';
 
     const confirmed = window.confirm(
-      `Create or reuse a secure Stripe checkout for ${appointment.customerName} and email the ${money(
-        appointment.depositAmount
-      )} deposit link to ${appointment.customerEmail}?\n\nThis uses LIVE Stripe. The customer will only be charged if they complete checkout.\n\nIf an email was already attempted, check Resend before proceeding.`
+      `Cancel the appointment for ${customerName}?\n\nDate: ${formatAppointmentDate(
+        appointmentDate
+      )}\nTime: ${formatAppointmentTime(
+        appointmentTime
+      )}\n\nReason: ${reason}\n\nThis will release the reserved appointment time.${paymentWarning}\n\nNo automatic cancellation email will be sent to the customer.\n\nContinue?`
     );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
-    depositLinkMutation.mutate(appointment.id);
+    setProcessingId(appointmentId);
+
+    try {
+      const result = await cancellationMutation.mutateAsync({
+        appointmentId,
+        reason,
+      });
+
+      setDecisionSuccess(previous => ({
+        ...previous,
+        [appointmentId]:
+          result.message ||
+          'Appointment cancelled successfully.',
+      }));
+
+      setCancellingId(null);
+      setCancellationReason('');
+
+      await refreshAppointments();
+    } catch (caughtError) {
+      setDecisionErrors(previous => ({
+        ...previous,
+        [appointmentId]:
+          caughtError instanceof Error
+            ? caughtError.message
+            : 'Unable to cancel the appointment.',
+      }));
+    } finally {
+      setProcessingId(null);
+    }
   };
 
   return (
     <AdminLayout>
-      <div className="space-y-6 pb-12">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="brand-eyebrow mb-2">
-              Your Studio Workspace
-            </p>
+      <div className="space-y-7">
+        {/* PAGE HEADER */}
+        <section className="relative overflow-hidden rounded-2xl border border-[#F0DCE3] bg-white px-6 py-8 shadow-[0_5px_24px_rgba(41,37,43,0.035)] sm:px-8 sm:py-10">
+          <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-[#F7DDE4]/60 blur-3xl" />
 
-            <h1 className="font-heading text-3xl text-[#29252B] sm:text-4xl">
-              Appointments
-            </h1>
+          <div className="relative z-10 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="mb-3 flex items-center gap-2">
+                <Heart size={15} className="text-[#963F60]" />
+                <span className="brand-eyebrow">
+                  Studio Management
+                </span>
+              </div>
 
-            <p className="mt-2 text-sm text-[#786A72]">
-              Review requests, set deposits, and track bookings.
-            </p>
+              <h1 className="brand-heading text-[42px] text-[#29252B] sm:text-[52px]">
+                Appointment{' '}
+                <span className="brand-heading-accent">
+                  Requests
+                </span>
+              </h1>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-3 rounded-xl border border-[#EBCBD6] bg-[#FFF7F8] px-5 py-4">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-[#963F60]">
+                <ClipboardList size={21} />
+              </div>
+
+              <div>
+                <p className="font-heading text-[30px] leading-none text-[#29252B]">
+                  {isLoading ? '...' : counts.all}
+                </p>
+                <p className="mt-1 text-[11px] text-[#786A72]">
+                  Total Requests
+                </p>
+              </div>
+            </div>
           </div>
+        </section>
 
-          <div className="flex items-center gap-3">
-            <Badge variant="outline">
-              Total: {appointments.length}
-            </Badge>
+        {/* PENDING REQUESTS NOTICE */}
+        {!isLoading && !error && counts.pending > 0 && (
+          <section className="flex items-center gap-4 rounded-xl border border-[#EBCBD6] bg-[#FCECF1] px-5 py-4">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-[#963F60]">
+              <AlertCircle size={21} />
+            </div>
 
-            <Button
-              type="button"
-              variant="outline"
-              disabled={isFetching}
-              onClick={() => void refetch()}
-            >
-              <RefreshCw
-                size={16}
-                className={`mr-2 ${
-                  isFetching ? 'animate-spin' : ''
-                }`}
+            <p className="text-[13px] font-semibold text-[#963F60]">
+              {counts.pending}{' '}
+              {counts.pending === 1
+                ? 'appointment needs'
+                : 'appointments need'}{' '}
+              your attention
+            </p>
+          </section>
+        )}
+
+        {/* SEARCH AND FILTERS */}
+        <section className="brand-card p-5 sm:p-6">
+          <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="brand-eyebrow mb-2">
+                Booking Directory
+              </p>
+              <h2 className="font-heading text-[29px] text-[#29252B]">
+                Manage Appointments
+              </h2>
+            </div>
+
+            <div className="relative w-full sm:max-w-[300px]">
+              <Search
+                size={17}
+                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#A28F98]"
               />
-              Refresh
-            </Button>
+              <input
+                type="search"
+                aria-label="Search appointments"
+                placeholder="Search customer or date..."
+                value={searchTerm}
+                onChange={event =>
+                  setSearchTerm(event.target.value)
+                }
+                className="h-11 w-full rounded-lg border border-[#EBD8DF] bg-[#FFFBFC] pl-10 pr-4 text-[13px] text-[#29252B] outline-none transition-colors placeholder:text-[#A28F98] focus:border-[#963F60] focus:ring-2 focus:ring-[#963F60]/10"
+              />
+            </div>
           </div>
-        </div>
 
+          <div className="flex flex-wrap gap-2">
+            {filters.map(filter => {
+              const active = statusFilter === filter.key;
+
+              return (
+                <button
+                  key={filter.key}
+                  type="button"
+                  onClick={() =>
+                    setStatusFilter(filter.key)
+                  }
+                  aria-pressed={active}
+                  className={`
+                    inline-flex min-h-10 items-center
+                    gap-2 rounded-lg border px-3.5 py-2
+                    text-[12px] font-semibold
+                    transition-colors
+                    ${
+                      active
+                        ? 'border-[#963F60] bg-[#963F60] text-white'
+                        : 'border-[#EBD8DF] bg-white text-[#786A72] hover:border-[#EFA1B7] hover:bg-[#FFF7F8] hover:text-[#963F60]'
+                    }
+                  `}
+                >
+                  {filter.label}
+                  <span
+                    className={`
+                      rounded-md px-1.5 py-0.5
+                      text-[10px]
+                      ${
+                        active
+                          ? 'bg-white/20 text-white'
+                          : 'bg-[#F7DDE4]/60 text-[#963F60]'
+                      }
+                    `}
+                  >
+                    {filter.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* LOADING / ERROR */}
         {isLoading && (
-          <Card className="flex items-center gap-3 p-6">
-            <Loader2 className="animate-spin text-[#963F60]" />
+          <div
+            role="status"
+            className="brand-card flex items-center justify-center gap-3 px-6 py-12 text-sm text-[#786A72]"
+          >
+            <Loader2
+              size={20}
+              className="animate-spin text-[#963F60]"
+            />
             Loading appointments...
-          </Card>
+          </div>
         )}
 
         {error && (
-          <Card className="border-red-200 bg-red-50 p-6">
-            <p className="text-sm text-red-700">
-              {error instanceof Error
-                ? error.message
-                : 'Unable to load appointments.'}
-            </p>
-          </Card>
+          <div
+            role="alert"
+            className="rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700"
+          >
+            Unable to load appointments:{' '}
+            {error instanceof Error
+              ? error.message
+              : 'Please try again later.'}
+          </div>
         )}
 
-        {!isLoading &&
-          !error &&
-          highlightedId &&
-          !appointments.some(
-            appointment => appointment.id === highlightedId
-          ) && (
-            <Card className="border-amber-200 bg-amber-50 p-5">
-              <p className="text-sm text-amber-800">
-                The requested appointment was not found in
-                the current list. Refresh or check whether
-                it is still available.
-              </p>
-            </Card>
-          )}
+        {/* APPOINTMENT CARDS */}
+        {!isLoading && !error && (
+          <div className="space-y-5">
+            {filteredAppointments.map(appointment => {
+              const totalPrice = Number(
+                appointment.totalPrice || 0
+              );
 
-        {!isLoading &&
-          !error &&
-          appointments.length === 0 && (
-            <Card className="p-12 text-center">
-              <Calendar
-                size={48}
-                className="mx-auto mb-4 text-gray-300"
-              />
+              const depositPaid = appointment.depositPaidAt
+                ? Number(appointment.depositPaid || 0)
+                : 0;
 
-              <h2 className="text-xl font-semibold">
-                No appointments yet
-              </h2>
+              const balanceDue = Math.max(
+                0,
+                totalPrice - depositPaid
+              );
 
-              <p className="mt-2 text-sm text-gray-500">
-                New customer requests will appear here.
-              </p>
-            </Card>
-          )}
+              const hasPaidDeposit =
+                Boolean(appointment.depositPaidAt) &&
+                depositPaid > 0;
 
-        <div className="space-y-4">
-          {appointments.map(appointment => {
-            const isHighlighted =
-              appointment.id === highlightedId;
+              const services = Array.isArray(
+                appointment.services
+              )
+                ? appointment.services
+                : [];
 
-            const pending =
-              appointment.status === 'pending';
+              const isPending =
+                appointment.status === 'pending';
 
-            const awaitingDeposit =
-              appointment.status === 'awaiting_deposit';
+              const canCancel =
+                appointment.status === 'awaiting_deposit' ||
+                appointment.status === 'confirmed';
 
-            const isUpdating =
-              decisionMutation.isPending &&
-              decisionMutation.variables?.appointmentId ===
-                appointment.id;
+              const isCancellationOpen =
+                cancellingId === appointment.id;
 
-            const isSending =
-              depositLinkMutation.isPending &&
-              depositLinkMutation.variables ===
-                appointment.id;
+              const isProcessing =
+                processingId === appointment.id;
 
-            const emailAccepted =
-              emailAcceptedIds[appointment.id] === true;
+              const isAnotherProcessing =
+                processingId !== null &&
+                processingId !== appointment.id;
 
-            const services = serviceItems(
-              appointment.services
-            );
+              const depositInput =
+                depositInputs[appointment.id] ?? '';
 
-            return (
-              <div
-                key={appointment.id}
-                ref={
-                  isHighlighted
-                    ? highlightedRef
-                    : undefined
-                }
-              >
+              return (
                 <Card
-                  className={`p-5 transition-shadow sm:p-6 ${
-                    isHighlighted
-                      ? 'border-2 border-[#963F60] shadow-lg'
-                      : 'hover:shadow-md'
-                  }`}
+                  key={appointment.id}
+                  className="brand-card overflow-hidden p-0"
                 >
-                  <div className="flex flex-col gap-6 lg:flex-row">
-                    <div className="min-w-0 flex-1 space-y-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <h2 className="text-xl font-bold text-[#29252B]">
-                            {appointment.customerName}
-                          </h2>
+                  {/* CARD HEADER */}
+                  <div className="flex flex-col gap-4 border-b border-[#F2E5E9] bg-[#FFFBFC] px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#F7DDE4]/70 text-[#963F60]">
+                        <UserRound
+                          size={22}
+                          strokeWidth={1.7}
+                        />
+                      </div>
 
-                          <div className="mt-2 space-y-1 text-sm text-gray-600">
-                            <p className="flex items-center gap-2 break-all">
-                              <Mail
-                                size={15}
-                                className="shrink-0 text-pink-500"
-                              />
-                              {appointment.customerEmail}
+                      <div className="min-w-0">
+                        <h3 className="font-heading text-[29px] leading-tight text-[#29252B]">
+                          {appointment.customerName || 'Customer'}
+                        </h3>
+                        <p className="mt-1 text-xs text-[#96858E]">
+                          Appointment Request
+                        </p>
+                      </div>
+                    </div>
+
+                    <span
+                      className={`inline-flex self-start rounded-full border px-3 py-1.5 text-[11px] font-semibold ${getStatusClass(
+                        appointment.status
+                      )}`}
+                    >
+                      {getStatusLabel(appointment.status)}
+                    </span>
+                  </div>
+
+                  {/* MAIN CONTENT */}
+                  <div className="grid grid-cols-1 gap-6 p-5 lg:grid-cols-[minmax(0,1fr)_280px] sm:p-6">
+                    <div className="min-w-0 space-y-6">
+                      {/* DATE AND TIME */}
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="flex items-center gap-3 rounded-xl border border-[#F2E5E9] bg-[#FFF7F8] p-4">
+                          <CalendarDays
+                            size={20}
+                            className="shrink-0 text-[#963F60]"
+                          />
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#96858E]">
+                              Appointment Date
                             </p>
-
-                            <p className="flex items-center gap-2">
-                              <Phone
-                                size={15}
-                                className="text-pink-500"
-                              />
-                              {appointment.customerPhone}
+                            <p className="mt-1 text-[13px] font-semibold text-[#29252B]">
+                              {formatAppointmentDate(
+                                appointment.appointmentDate
+                              )}
                             </p>
                           </div>
                         </div>
 
-                        <Badge
-                          className={statusStyle(
-                            appointment.status
-                          )}
-                        >
-                          {statusLabel(appointment.status)}
-                        </Badge>
-                      </div>
-
-                      <div className="grid gap-3 text-sm text-gray-700 sm:grid-cols-2">
-                        <p className="flex items-center gap-2">
-                          <Calendar
-                            size={17}
-                            className="text-pink-500"
+                        <div className="flex items-center gap-3 rounded-xl border border-[#F2E5E9] bg-[#FFF7F8] p-4">
+                          <Clock3
+                            size={20}
+                            className="shrink-0 text-[#963F60]"
                           />
-                          {formatDate(
-                            appointment.appointmentDate
-                          )}
-                        </p>
-
-                        <p className="flex items-center gap-2">
-                          <Clock
-                            size={17}
-                            className="text-pink-500"
-                          />
-                          {formatTime12Hour(
-                            appointment.appointmentTime
-                          )}
-                        </p>
-                      </div>
-
-                      <div>
-                        <h3 className="mb-2 text-sm font-semibold">
-                          Services
-                        </h3>
-
-                        <div className="flex flex-wrap gap-2">
-                          {services.map((item, index) => {
-                            const service =
-                              item?.service ?? item;
-
-                            return (
-                              <div
-                                key={index}
-                                className="rounded-lg border border-pink-200 bg-pink-50 px-3 py-2 text-sm"
-                              >
-                                {service?.title ??
-                                  service?.name ??
-                                  'Service'}
-                              </div>
-                            );
-                          })}
-
-                          {services.length === 0 && (
-                            <p className="text-sm text-gray-500">
-                              No service details available.
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#96858E]">
+                              Appointment Time
                             </p>
+                            <p className="mt-1 text-[13px] font-semibold text-[#29252B]">
+                              {formatAppointmentTime(
+                                appointment.appointmentTime
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CUSTOMER CONTACT */}
+                      <div>
+                        <p className="brand-eyebrow mb-3">
+                          Customer Information
+                        </p>
+
+                        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-x-6">
+                          {appointment.customerEmail && (
+                            <a
+                              href={`mailto:${appointment.customerEmail}`}
+                              className="inline-flex min-w-0 items-center gap-2 text-[12px] text-[#786A72] hover:text-[#963F60]"
+                            >
+                              <Mail
+                                size={16}
+                                className="shrink-0 text-[#963F60]"
+                              />
+                              <span className="break-all">
+                                {appointment.customerEmail}
+                              </span>
+                            </a>
+                          )}
+
+                          {appointment.customerPhone && (
+                            <a
+                              href={`tel:${appointment.customerPhone}`}
+                              className="inline-flex items-center gap-2 text-[12px] text-[#786A72] hover:text-[#963F60]"
+                            >
+                              <Phone
+                                size={16}
+                                className="shrink-0 text-[#963F60]"
+                              />
+                              {appointment.customerPhone}
+                            </a>
                           )}
                         </div>
                       </div>
 
-                      {appointment.durationMinutes !== null && (
-                        <p className="text-xs text-gray-500">
-                          Duration: {appointment.durationMinutes}{' '}
-                          minutes
+                      {/* SERVICES */}
+                      <div>
+                        <p className="brand-eyebrow mb-3">
+                          Selected Services
                         </p>
-                      )}
 
+                        {services.length === 0 ? (
+                          <p className="text-xs text-[#96858E]">
+                            No services listed.
+                          </p>
+                        ) : (
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            {services.map(
+                              (item: any, index: number) => {
+                                const service =
+                                  item?.service || item;
+
+                                const imageUrl =
+                                  service?.images?.[0] ||
+                                  service?.image;
+
+                                const title =
+                                  service?.title ||
+                                  service?.name ||
+                                  'Nail Service';
+
+                                const price =
+                                  service?.price ??
+                                  item?.price ??
+                                  0;
+
+                                return (
+                                  <div
+                                    key={index}
+                                    className="flex items-center gap-3 rounded-xl border border-[#F2E5E9] bg-white p-3"
+                                  >
+                                    {imageUrl ? (
+                                      <img
+                                        src={imageUrl}
+                                        alt={title}
+                                        loading="lazy"
+                                        className="h-14 w-14 shrink-0 rounded-lg bg-[#FFF7F8] object-cover"
+                                      />
+                                    ) : (
+                                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-[#FFF7F8] text-[#963F60]">
+                                        <Scissors size={21} />
+                                      </div>
+                                    )}
+
+                                    <div className="min-w-0">
+                                      <p className="text-[12px] font-semibold leading-5 text-[#29252B]">
+                                        {title}
+                                      </p>
+                                      <p className="mt-1 text-xs font-semibold text-[#963F60]">
+                                        {currency(price)}
+                                      </p>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* NOTES */}
                       {appointment.notes && (
-                        <div>
-                          <h3 className="text-sm font-semibold">
-                            Customer Notes
-                          </h3>
+                        <div className="rounded-xl border border-[#F2E5E9] bg-[#FFFBFC] p-4">
+                          <div className="mb-2 flex items-center gap-2">
+                            <MessageSquareText
+                              size={16}
+                              className="text-[#963F60]"
+                            />
+                            <p className="text-[12px] font-semibold text-[#29252B]">
+                              Customer Notes
+                            </p>
+                          </div>
 
-                          <p className="mt-1 whitespace-pre-wrap text-sm text-gray-600">
+                          <p className="whitespace-pre-wrap break-words text-[12px] leading-6 text-[#786A72]">
                             {appointment.notes}
                           </p>
                         </div>
                       )}
 
+                      {/* INSPIRATION PHOTO */}
                       {appointment.inspirationUrl && (
-                        <a
-                          href={appointment.inspirationUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-block text-sm font-semibold text-[#963F60] underline"
-                        >
-                          View inspiration photo
-                        </a>
+                        <div>
+                          <div className="mb-3 flex items-center gap-2">
+                            <ImageIcon
+                              size={16}
+                              className="text-[#963F60]"
+                            />
+                            <p className="text-[12px] font-semibold text-[#29252B]">
+                              Inspiration Photo
+                            </p>
+                          </div>
+
+                          <a
+                            href={appointment.inspirationUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-block overflow-hidden rounded-xl border border-[#F2E5E9] bg-[#FFF7F8]"
+                          >
+                            <img
+                              src={appointment.inspirationUrl}
+                              alt="Customer nail inspiration"
+                              loading="lazy"
+                              className="h-36 w-36 object-contain"
+                            />
+                          </a>
+                        </div>
                       )}
                     </div>
 
-                    <div className="space-y-4 lg:w-72">
-                      <Card className="bg-[#FFF7F8] p-4">
-                        <div className="mb-3 flex items-center gap-2">
-                          <DollarSign
-                            size={18}
-                            className="text-[#963F60]"
-                          />
-
-                          <h3 className="font-semibold">
-                            Payment
-                          </h3>
-                        </div>
-
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between">
-                            <span>Total</span>
-                            <strong>
-                              {money(appointment.totalPrice)}
-                            </strong>
-                          </div>
-
-                          <div className="flex justify-between">
-                            <span>Deposit Required</span>
-                            <strong>
-                              {appointment.depositAmount === null
-                                ? 'Not set'
-                                : money(appointment.depositAmount)}
-                            </strong>
-                          </div>
-
-                          <div className="flex justify-between text-green-700">
-                            <span>Deposit Paid</span>
-                            <strong>
-                              {money(appointment.depositPaid)}
-                            </strong>
-                          </div>
-
-                          <div className="flex justify-between border-t pt-2">
-                            <span>Balance Due</span>
-                            <strong>
-                              {money(appointment.balanceDue)}
-                            </strong>
-                          </div>
-                        </div>
-
-                        {awaitingDeposit && (
-                          <p className="mt-3 flex items-start gap-2 text-xs text-purple-700">
-                            <AlertCircle
-                              size={15}
-                              className="shrink-0"
+                    {/* PAYMENT SUMMARY */}
+                    <div className="space-y-4">
+                      <div className="overflow-hidden rounded-xl border border-[#EBCBD6] bg-[#FFF7F8]">
+                        <div className="border-b border-[#EBCBD6] bg-[#F7DDE4]/55 px-5 py-4">
+                          <div className="flex items-center gap-2">
+                            <DollarSign
+                              size={18}
+                              className="text-[#963F60]"
                             />
-                            Approved, but the deposit has not
-                            been confirmed.
-                          </p>
-                        )}
+                            <h4 className="text-[13px] font-semibold text-[#29252B]">
+                              Payment Summary
+                            </h4>
+                          </div>
+                        </div>
 
-                        {appointment.status === 'confirmed' &&
-                          appointment.depositPaidAt && (
-                            <p className="mt-3 flex items-center gap-2 text-xs text-green-700">
-                              <CheckCircle2 size={15} />
-                              Deposit payment confirmed.
-                            </p>
-                          )}
-                      </Card>
+                        <div className="space-y-4 p-5">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs text-[#786A72]">
+                              Service Total
+                            </span>
+                            <span className="text-[13px] font-semibold text-[#29252B]">
+                              {currency(totalPrice)}
+                            </span>
+                          </div>
 
-                      {pending && (
-                        <div className="space-y-3 rounded-xl border border-[#F0DCE3] bg-white p-4">
-                          <h3 className="text-sm font-semibold text-[#29252B]">
-                            Review Request
-                          </h3>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs text-[#786A72]">
+                              Deposit Requested
+                            </span>
+                            <span className="text-[13px] font-semibold text-[#29252B]">
+                              {appointment.depositAmount != null
+                                ? currency(
+                                    appointment.depositAmount
+                                  )
+                                : 'Not Set'}
+                            </span>
+                          </div>
 
-                          <Label
-                            htmlFor={`deposit-${appointment.id}`}
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs text-[#786A72]">
+                              Deposit Paid
+                            </span>
+                            <span className="text-[13px] font-semibold text-[#397A53]">
+                              {currency(depositPaid)}
+                            </span>
+                          </div>
+
+                          <div className="border-t border-[#EBCBD6] pt-4">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-xs font-semibold text-[#29252B]">
+                                Remaining Balance
+                              </span>
+                              <span className="font-heading text-[25px] font-semibold text-[#963F60]">
+                                {currency(balanceDue)}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div
+                            className={`flex items-start gap-2 rounded-lg p-3 ${
+                              hasPaidDeposit
+                                ? 'bg-[#EFF9F2]'
+                                : 'bg-white'
+                            }`}
                           >
-                            Deposit Amount ($)
-                          </Label>
+                            {hasPaidDeposit ? (
+                              <CheckCircle2
+                                size={17}
+                                className="mt-0.5 shrink-0 text-[#397A53]"
+                              />
+                            ) : (
+                              <Clock3
+                                size={17}
+                                className="mt-0.5 shrink-0 text-[#963F60]"
+                              />
+                            )}
 
-                          <Input
+                            <p
+                              className={`text-[11px] leading-5 ${
+                                hasPaidDeposit
+                                  ? 'text-[#397A53]'
+                                  : 'text-[#786A72]'
+                              }`}
+                            >
+                              {hasPaidDeposit
+                                ? 'Deposit payment recorded.'
+                                : appointment.status ===
+                                    'awaiting_deposit'
+                                  ? 'Awaiting verified deposit payment.'
+                                  : 'No deposit payment has been recorded.'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {appointment.status === 'awaiting_deposit' && !appointment.depositPaidAt && (
+                        <div className="space-y-3 rounded-xl border border-[#EBCBD6] bg-[#FFF7F8] p-4">
+                          {emailAccepted[appointment.id] ? (
+                            <p role="status" className="text-xs leading-5 text-[#397A53]">Resend accepted the deposit email. Delivery is not yet confirmed.</p>
+                          ) : (
+                            <button type="button" disabled={processingId !== null || isCancellationOpen || !appointment.customerEmail} onClick={() => handleSendDepositLink(appointment.id, appointment.customerEmail || '')} className="inline-flex w-full min-h-11 items-center justify-center gap-2 rounded-lg bg-[#963F60] px-3 py-3 text-xs font-semibold text-white hover:bg-[#79324F] disabled:cursor-not-allowed disabled:opacity-60">
+                              {sendingId === appointment.id ? <Loader2 size={17} className="animate-spin" /> : <Mail size={17} />}
+                              {sendingId === appointment.id ? 'Processing...' : 'Create Checkout & Send Link'}
+                            </button>
+                          )}
+                          {paymentErrors[appointment.id] && <p role="alert" className="text-xs leading-5 text-red-700">{paymentErrors[appointment.id]}</p>}
+                          <p className="text-[11px] leading-5 text-[#786A72]">The appointment remains unconfirmed until payment is verified.</p>
+                        </div>
+                      )}
+
+                      {/* CURRENT REQUEST STATUS */}
+                      <div className="rounded-xl border border-[#F2E5E9] bg-white p-4">
+                        <p className="brand-eyebrow mb-2">
+                          Request Status
+                        </p>
+
+                        <span
+                          className={`inline-flex rounded-full border px-3 py-1.5 text-[11px] font-semibold ${getStatusClass(
+                            appointment.status
+                          )}`}
+                        >
+                          {getStatusLabel(
+                            appointment.status
+                          )}
+                        </span>
+
+                        <p className="mt-3 text-[11px] leading-5 text-[#96858E]">
+                          {appointment.status === 'pending'
+                            ? 'This request is waiting for administrator review.'
+                            : appointment.status ===
+                                'awaiting_deposit'
+                              ? 'Approved, but not confirmed. Deposit payment must be verified.'
+                              : appointment.status ===
+                                  'confirmed'
+                                ? 'This appointment is confirmed.'
+                                : appointment.status ===
+                                    'declined'
+                                  ? 'This appointment request was declined.'
+                                  : appointment.status ===
+                                      'cancelled'
+                                    ? 'This appointment was cancelled.'
+                                    : 'Appointment information is available above.'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ADMIN APPROVAL CONTROLS */}
+                  {isPending && (
+                    <div className="border-t border-[#EBCBD6] bg-[#FFF7F8] px-5 py-6 sm:px-6">
+                      <div className="mb-5 flex items-start gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-[#963F60]">
+                          <ShieldCheck size={21} />
+                        </div>
+
+                        <div>
+                          <h4 className="font-heading text-[25px] text-[#29252B]">
+                            Review Appointment
+                          </h4>
+                          <p className="mt-1 text-[12px] leading-5 text-[#786A72]">
+                            Set the deposit amount before
+                            approving, or decline this request.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="max-w-md">
+                        <label
+                          htmlFor={`deposit-${appointment.id}`}
+                          className="mb-2 block text-[12px] font-semibold text-[#29252B]"
+                        >
+                          Custom Deposit Amount
+                        </label>
+
+                        <div className="relative">
+                          <DollarSign
+                            size={17}
+                            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#963F60]"
+                          />
+                          <input
                             id={`deposit-${appointment.id}`}
                             type="number"
                             min="0.50"
-                            max={appointment.totalPrice}
+                            max={totalPrice}
                             step="0.01"
+                            inputMode="decimal"
                             placeholder="Enter deposit amount"
-                            value={
-                              depositInputs[appointment.id] ??
-                              ''
+                            value={depositInput}
+                            disabled={
+                              isProcessing ||
+                              isAnotherProcessing
                             }
-                            onChange={event =>
+                            onChange={event => {
                               setDepositInputs(previous => ({
                                 ...previous,
                                 [appointment.id]:
                                   event.target.value,
-                              }))
-                            }
-                            disabled={decisionMutation.isPending}
+                              }));
+                              clearDecisionMessages(
+                                appointment.id
+                              );
+                            }}
+                            className="h-12 w-full rounded-lg border border-[#EBCBD6] bg-white pl-10 pr-4 text-[14px] text-[#29252B] outline-none transition-colors placeholder:text-[#A28F98] focus:border-[#963F60] focus:ring-2 focus:ring-[#963F60]/10 disabled:opacity-60"
                           />
+                        </div>
 
-                          <Button
-                            type="button"
-                            className="w-full bg-[#963F60] text-white hover:bg-[#79324F]"
-                            disabled={decisionMutation.isPending}
-                            onClick={() =>
-                              handleApprove(appointment)
-                            }
-                          >
-                            {isUpdating ? (
-                              <Loader2
-                                size={16}
-                                className="mr-2 animate-spin"
-                              />
-                            ) : (
-                              <CheckCircle2
-                                size={16}
-                                className="mr-2"
-                              />
-                            )}
-                            Approve Request
-                          </Button>
+                        <p className="mt-2 text-[11px] text-[#786A72]">
+                          Service total:{' '}
+                          <span className="font-semibold text-[#963F60]">
+                            {currency(totalPrice)}
+                          </span>
+                        </p>
+                      </div>
 
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="w-full border-red-200 text-red-700 hover:bg-red-50"
-                            disabled={decisionMutation.isPending}
-                            onClick={() =>
-                              handleDecline(appointment)
-                            }
-                          >
-                            Decline Request
-                          </Button>
+                      <div className="mt-4 rounded-lg border border-[#EBCBD6] bg-white p-4">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle
+                            size={17}
+                            className="mt-0.5 shrink-0 text-[#963F60]"
+                          />
+                          <p className="text-[11px] leading-5 text-[#786A72]">
+                            Approval will reserve the
+                            appointment as{' '}
+                            <strong>Awaiting Deposit</strong>.
+                            No payment link or customer
+                            notification will be sent yet.
+                            The appointment is not confirmed
+                            until the Stripe payment workflow
+                            is completed.
+                          </p>
+                        </div>
+                      </div>
+
+                      {decisionErrors[appointment.id] && (
+                        <div
+                          role="alert"
+                          className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-700"
+                        >
+                          {decisionErrors[appointment.id]}
                         </div>
                       )}
 
-                      {awaitingDeposit && (
-                        <div className="space-y-3 rounded-xl border border-[#F0DCE3] bg-white p-4">
-                          <h3 className="text-sm font-semibold text-[#29252B]">
-                            Deposit Payment Link
-                          </h3>
+                      <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                        <button
+                          type="button"
+                          disabled={
+                            isProcessing ||
+                            isAnotherProcessing
+                          }
+                          onClick={() =>
+                            handleDecision(
+                              appointment.id,
+                              appointment.customerName ||
+                                'this customer',
+                              'approve',
+                              totalPrice
+                            )
+                          }
+                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#963F60] px-5 py-3 text-[12px] font-semibold text-white transition-colors hover:bg-[#79324F] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isProcessing ? (
+                            <Loader2
+                              size={17}
+                              className="animate-spin"
+                            />
+                          ) : (
+                            <CheckCircle2 size={17} />
+                          )}
+                          Approve Request
+                        </button>
 
-                          <p className="text-xs text-gray-600">
-                            Create or reuse a verified Stripe
-                            checkout and email the approved
-                            deposit link to the customer.
-                          </p>
+                        <button
+                          type="button"
+                          disabled={
+                            isProcessing ||
+                            isAnotherProcessing
+                          }
+                          onClick={() =>
+                            handleDecision(
+                              appointment.id,
+                              appointment.customerName ||
+                                'this customer',
+                              'decline',
+                              totalPrice
+                            )
+                          }
+                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#DCA7B6] bg-white px-5 py-3 text-[12px] font-semibold text-[#963F60] transition-colors hover:border-[#963F60] hover:bg-[#FCECF1] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isProcessing ? (
+                            <Loader2
+                              size={17}
+                              className="animate-spin"
+                            />
+                          ) : (
+                            <XCircle size={17} />
+                          )}
+                          Decline Request
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
-                          {appointment.depositExpiresAt && (
-                            <p className="text-xs text-gray-600">
-                              <strong>Payment deadline:</strong>{' '}
-                              {new Date(
-                                appointment.depositExpiresAt
-                              ).toLocaleString()}
+                  {/* NEW: ADMIN CANCELLATION CONTROLS */}
+                  {canCancel && (
+                    <div className="border-t border-[#EBCBD6] bg-[#FFFBFC] px-5 py-6 sm:px-6">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex items-start gap-3">
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#FFF0F2] text-[#A5465B]">
+                            <XCircle size={21} />
+                          </div>
+
+                          <div>
+                            <h4 className="font-heading text-[25px] text-[#29252B]">
+                              Cancel Appointment
+                            </h4>
+
+                            <p className="mt-1 max-w-xl text-[12px] leading-5 text-[#786A72]">
+                              Cancelling releases this
+                              appointment's reserved time.
+                              The appointment and payment
+                              history will be preserved.
                             </p>
+                          </div>
+                        </div>
+
+                        {!isCancellationOpen && (
+                          <button
+                            type="button"
+                            disabled={processingId !== null}
+                            onClick={() =>
+                              openCancellation(appointment.id)
+                            }
+                            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-[#DCA7B6] bg-white px-5 py-3 text-[12px] font-semibold text-[#A5465B] transition-colors hover:border-[#A5465B] hover:bg-[#FFF0F2] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <XCircle size={17} />
+                            Cancel Appointment
+                          </button>
+                        )}
+                      </div>
+
+                      {isCancellationOpen && (
+                        <div className="mt-5 space-y-4 rounded-xl border border-[#EBCBD6] bg-white p-4 sm:p-5">
+                          <div>
+                            <label
+                              htmlFor={`cancel-reason-${appointment.id}`}
+                              className="mb-2 block text-[12px] font-semibold text-[#29252B]"
+                            >
+                              Cancellation Reason
+                              <span className="ml-1 text-[#A5465B]">
+                                *
+                              </span>
+                            </label>
+
+                            <textarea
+                              id={`cancel-reason-${appointment.id}`}
+                              value={cancellationReason}
+                              onChange={event => {
+                                setCancellationReason(
+                                  event.target.value
+                                );
+                                clearDecisionMessages(
+                                  appointment.id
+                                );
+                              }}
+                              maxLength={1000}
+                              rows={4}
+                              disabled={processingId !== null}
+                              placeholder="Explain why this appointment is being cancelled..."
+                              className="w-full resize-y rounded-lg border border-[#EBCBD6] bg-[#FFFBFC] px-4 py-3 text-[13px] text-[#29252B] outline-none transition-colors placeholder:text-[#A28F98] focus:border-[#963F60] focus:ring-2 focus:ring-[#963F60]/10 disabled:opacity-60"
+                            />
+
+                            <p className="mt-2 text-right text-[11px] text-[#96858E]">
+                              {cancellationReason.length}/1000
+                              characters
+                            </p>
+                          </div>
+
+                          <div className="rounded-lg border border-[#EBCBD6] bg-[#FFF7F8] p-4">
+                            <div className="flex items-start gap-2">
+                              <AlertCircle
+                                size={18}
+                                className="mt-0.5 shrink-0 text-[#963F60]"
+                              />
+
+                              <div className="space-y-2 text-[12px] leading-5 text-[#786A72]">
+                                <p>
+                                  <strong className="text-[#29252B]">
+                                    Important:
+                                  </strong>{' '}
+                                  This action changes the
+                                  appointment status to
+                                  Cancelled and releases the
+                                  reserved time.
+                                </p>
+
+                                <p>
+                                  The customer will not
+                                  automatically receive a
+                                  cancellation email.
+                                </p>
+
+                                <p>
+                                  Refunds are not automatic.
+                                  Any deposit refund must be
+                                  handled separately.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {hasPaidDeposit && (
+                            <div
+                              role="alert"
+                              className="rounded-lg border border-[#EBCF9D] bg-[#FFF8E9] p-4"
+                            >
+                              <div className="flex items-start gap-2">
+                                <AlertCircle
+                                  size={18}
+                                  className="mt-0.5 shrink-0 text-[#91641E]"
+                                />
+                                <p className="text-[12px] leading-5 text-[#91641E]">
+                                  <strong>
+                                    Paid deposit warning:
+                                  </strong>{' '}
+                                  This customer has paid{' '}
+                                  {currency(depositPaid)}.
+                                  Cancelling will not
+                                  automatically refund that
+                                  payment. Review the
+                                  payment separately.
+                                </p>
+                              </div>
+                            </div>
                           )}
 
-                          {emailAccepted ? (
-                            <div className="flex items-start gap-2 rounded-lg bg-green-50 p-3 text-xs text-green-800">
-                              <CheckCircle2
-                                size={16}
-                                className="shrink-0"
-                              />
-                              Resend accepted the payment email
-                              during this dashboard session.
-                              Delivery is not yet confirmed.
+                          {decisionErrors[appointment.id] && (
+                            <div
+                              role="alert"
+                              className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-700"
+                            >
+                              {decisionErrors[appointment.id]}
                             </div>
-                          ) : (
-                            <Button
+                          )}
+
+                          <div className="flex flex-col gap-3 sm:flex-row">
+                            <button
                               type="button"
-                              className="w-full bg-[#963F60] text-white hover:bg-[#79324F]"
                               disabled={
-                                decisionMutation.isPending ||
-                                depositLinkMutation.isPending
+                                processingId !== null ||
+                                cancellationReason.trim().length < 3 ||
+                                cancellationReason.trim().length > 1000
                               }
                               onClick={() =>
-                                handleSendDepositLink(
-                                  appointment
+                                handleCancellation(
+                                  appointment.id,
+                                  appointment.customerName ||
+                                    'this customer',
+                                  appointment.appointmentDate,
+                                  appointment.appointmentTime,
+                                  hasPaidDeposit
                                 )
                               }
+                              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#A5465B] px-5 py-3 text-[12px] font-semibold text-white transition-colors hover:bg-[#843648] disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                              {isSending ? (
+                              {isProcessing ? (
                                 <Loader2
-                                  size={16}
-                                  className="mr-2 animate-spin"
+                                  size={17}
+                                  className="animate-spin"
                                 />
                               ) : (
-                                <Send
-                                  size={16}
-                                  className="mr-2"
-                                />
+                                <XCircle size={17} />
                               )}
 
-                              {isSending
-                                ? 'Preparing Payment Email...'
-                                : 'Create Checkout & Send Link'}
-                            </Button>
-                          )}
+                              Confirm Cancellation
+                            </button>
 
-                          <p className="text-xs text-amber-700">
-                            If an earlier email attempt failed
-                            or timed out, check Stripe and
-                            Resend before trying again.
-                          </p>
+                            <button
+                              type="button"
+                              disabled={processingId !== null}
+                              onClick={closeCancellation}
+                              className="inline-flex min-h-11 items-center justify-center rounded-lg border border-[#EBD8DF] bg-white px-5 py-3 text-[12px] font-semibold text-[#786A72] transition-colors hover:bg-[#FFF7F8] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              Keep Appointment
+                            </button>
+                          </div>
                         </div>
                       )}
+
+                      {!isCancellationOpen &&
+                        decisionErrors[appointment.id] && (
+                          <div
+                            role="alert"
+                            className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-700"
+                          >
+                            {decisionErrors[appointment.id]}
+                          </div>
+                        )}
                     </div>
-                  </div>
+                  )}
+
+                  {/* DECISION SUCCESS MESSAGE */}
+                  {decisionSuccess[appointment.id] && (
+                    <div
+                      role="status"
+                      className="flex items-start gap-3 border-t border-[#C7E4D2] bg-[#EFF9F2] px-5 py-4 sm:px-6"
+                    >
+                      <CheckCircle2
+                        size={19}
+                        className="mt-0.5 shrink-0 text-[#397A53]"
+                      />
+
+                      <p className="text-[12px] leading-5 text-[#397A53]">
+                        {decisionSuccess[appointment.id]}
+                      </p>
+                    </div>
+                  )}
                 </Card>
+              );
+            })}
+
+            {/* EMPTY RESULTS */}
+            {filteredAppointments.length === 0 && (
+              <div className="brand-card flex flex-col items-center px-6 py-14 text-center">
+                <CalendarDays
+                  size={34}
+                  strokeWidth={1.5}
+                  className="mb-4 text-[#EFA1B7]"
+                />
+
+                <h3 className="font-heading text-[29px] text-[#29252B]">
+                  {appointments.length === 0
+                    ? 'No Appointments Yet'
+                    : 'No Matching Appointments'}
+                </h3>
+
+                <p className="mt-2 max-w-sm text-xs leading-6 text-[#96858E]">
+                  {appointments.length === 0
+                    ? 'New customer appointment requests will appear here when submitted.'
+                    : 'Try changing your search or selecting another status filter.'}
+                </p>
+
+                {appointments.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchTerm('');
+                      setStatusFilter('all');
+                    }}
+                    className="mt-5 inline-flex min-h-10 items-center justify-center rounded-lg border border-[#963F60] px-5 py-2 text-xs font-semibold text-[#963F60] transition-colors hover:bg-[#F7DDE4]"
+                  >
+                    Clear Filters
+                  </button>
+                )}
               </div>
-            );
-          })}
-        </div>
+            )}
+          </div>
+        )}
       </div>
     </AdminLayout>
   );
