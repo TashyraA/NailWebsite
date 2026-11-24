@@ -1,4 +1,3 @@
-
 import React from 'react';
 import {
   useMutation,
@@ -55,6 +54,8 @@ type ApiResponse = {
   success: boolean;
   message?: string;
   error?: string;
+  checkoutUrl?: string;
+  emailAccepted?: boolean;
 };
 
 type CancellationRequest = {
@@ -109,6 +110,7 @@ const getStatusClass = (status: string): string => {
 
 const formatAppointmentDate = (value: unknown) => {
   if (!value) return 'Date unavailable';
+
   try {
     return formatDate(String(value));
   } catch {
@@ -118,6 +120,7 @@ const formatAppointmentDate = (value: unknown) => {
 
 const formatAppointmentTime = (value: unknown) => {
   if (!value) return 'Time unavailable';
+
   try {
     return formatTime12Hour(String(value));
   } catch {
@@ -136,7 +139,7 @@ const parseDeposit = (value: string): number | null => {
 
   if (
     !Number.isFinite(amount) ||
-    amount <= 0 ||
+    amount < 0.5 ||
     !Number.isSafeInteger(Math.round(amount * 100))
   ) {
     return null;
@@ -144,6 +147,18 @@ const parseDeposit = (value: string): number | null => {
 
   return amount;
 };
+
+const primaryButtonClass =
+  'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#963F60] px-5 py-3 text-[12px] font-semibold text-white transition-colors hover:bg-[#79324F] disabled:cursor-not-allowed disabled:opacity-60';
+
+const secondaryButtonClass =
+  'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#DCA7B6] bg-white px-5 py-3 text-[12px] font-semibold text-[#963F60] transition-colors hover:border-[#963F60] hover:bg-[#FCECF1] disabled:cursor-not-allowed disabled:opacity-60';
+
+const errorClass =
+  'mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-700';
+
+const successClass =
+  'rounded-lg border border-[#C7E4D2] bg-[#EFF9F2] px-4 py-3 text-[12px] leading-5 text-[#397A53]';
 
 async function postAdminAction(
   url: string,
@@ -165,13 +180,13 @@ async function postAdminAction(
     result = await response.json();
   } catch {
     throw new Error(
-      'Unable to read the server response. Please try again.'
+      'Unable to read the server response. Check the appointment before retrying.'
     );
   }
 
-  if (!response.ok || !result.success) {
+  if (!response.ok || result?.success !== true) {
     throw new Error(
-      result.error || 'Unable to update the appointment.'
+      result?.error || 'Unable to complete the requested action.'
     );
   }
 
@@ -196,6 +211,24 @@ async function submitAppointmentCancellation(
   );
 }
 
+async function createDepositCheckout(
+  appointmentId: string
+): Promise<ApiResponse> {
+  return postAdminAction(
+    '/api/admin-deposit-checkout',
+    { appointmentId }
+  );
+}
+
+async function sendDepositPaymentLink(
+  appointmentId: string
+): Promise<ApiResponse> {
+  return postAdminAction(
+    '/api/admin-send-deposit-link',
+    { appointmentId }
+  );
+}
+
 const AdminAppointments = () => {
   const queryClient = useQueryClient();
 
@@ -214,15 +247,28 @@ const AdminAppointments = () => {
   const [decisionSuccess, setDecisionSuccess] =
     React.useState<Record<string, string>>({});
 
+  const [paymentErrors, setPaymentErrors] =
+    React.useState<Record<string, string>>({});
+
+  const [emailAccepted, setEmailAccepted] =
+    React.useState<Record<string, boolean>>({});
+
   const [processingId, setProcessingId] =
     React.useState<string | null>(null);
 
-  // Cancellation form state.
+  const [sendingId, setSendingId] =
+    React.useState<string | null>(null);
+
+  const [paymentStage, setPaymentStage] =
+    React.useState<'checkout' | 'email' | null>(null);
+
   const [cancellingId, setCancellingId] =
     React.useState<string | null>(null);
 
   const [cancellationReason, setCancellationReason] =
     React.useState('');
+
+  const actionLock = React.useRef(false);
 
   const {
     data: appointments = [],
@@ -230,7 +276,7 @@ const AdminAppointments = () => {
     error,
   } = useQuery({
     queryKey: ['appointments'],
-    queryFn: getAppointments,
+    queryFn: () => getAppointments(),
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
@@ -238,10 +284,12 @@ const AdminAppointments = () => {
 
   const decisionMutation = useMutation({
     mutationFn: submitAppointmentDecision,
+    retry: false,
   });
 
   const cancellationMutation = useMutation({
     mutationFn: submitAppointmentCancellation,
+    retry: false,
   });
 
   const sortedAppointments = React.useMemo(() => {
@@ -312,8 +360,16 @@ const AdminAppointments = () => {
     label: string;
     count: number;
   }[] = [
-    { key: 'all', label: 'All Requests', count: counts.all },
-    { key: 'pending', label: 'Pending', count: counts.pending },
+    {
+      key: 'all',
+      label: 'All Requests',
+      count: counts.all,
+    },
+    {
+      key: 'pending',
+      label: 'Pending',
+      count: counts.pending,
+    },
     {
       key: 'awaiting_deposit',
       label: 'Awaiting Deposit',
@@ -368,7 +424,7 @@ const AdminAppointments = () => {
     action: DecisionAction,
     totalPrice: number
   ) => {
-    if (processingId) return;
+    if (actionLock.current || processingId) return;
 
     clearDecisionMessages(appointmentId);
 
@@ -378,12 +434,17 @@ const AdminAppointments = () => {
       const input = depositInputs[appointmentId] || '';
       const parsed = parseDeposit(input);
 
-      if (parsed === null || parsed > totalPrice) {
+      if (
+        parsed === null ||
+        !Number.isFinite(totalPrice) ||
+        parsed > totalPrice
+      ) {
         setDecisionErrors(previous => ({
           ...previous,
           [appointmentId]:
-            'Enter a valid deposit greater than $0 and no more than the service total.',
+            'Enter a valid deposit of at least $0.50 and no more than the service total.',
         }));
+
         return;
       }
 
@@ -392,18 +453,19 @@ const AdminAppointments = () => {
       const confirmed = window.confirm(
         `Approve the appointment request for ${customerName} with a ${currency(
           parsed
-        )} deposit?\n\nThe request will move to Awaiting Deposit.\n\nIMPORTANT: No Stripe payment link will be created or emailed yet. The appointment will NOT be confirmed.`
+        )} deposit?\n\nThe request will move to Awaiting Deposit.\n\nNo payment link will be created or emailed until you select Create Checkout & Send Link.\n\nThe appointment will NOT be confirmed yet.`
       );
 
       if (!confirmed) return;
     } else {
       const confirmed = window.confirm(
-        `Decline the appointment request for ${customerName}?\n\nThis will change the request status to Declined. This action cannot be undone from this page.\n\nNo automatic customer email will be sent yet.`
+        `Decline the appointment request for ${customerName}?\n\nThis will change the request status to Declined. This action cannot be undone from this page.\n\nNo automatic customer email will be sent.`
       );
 
       if (!confirmed) return;
     }
 
+    actionLock.current = true;
     setProcessingId(appointmentId);
 
     try {
@@ -432,20 +494,169 @@ const AdminAppointments = () => {
             : 'Unable to update the appointment.',
       }));
     } finally {
+      actionLock.current = false;
       setProcessingId(null);
     }
   };
 
-  const openCancellation = (appointmentId: string) => {
-    if (processingId) return;
+  const handleSendDepositLink = async (
+    appointmentId: string,
+    customerName: string,
+    customerEmail: string,
+    depositAmount: number
+  ) => {
+    if (actionLock.current || processingId) return;
+
+    const appointment = appointments.find(
+      item => item.id === appointmentId
+    );
+
+    setPaymentErrors(previous => ({
+      ...previous,
+      [appointmentId]: '',
+    }));
+
+    if (
+      !appointment ||
+      appointment.status !== 'awaiting_deposit' ||
+      Boolean(appointment.depositPaidAt) ||
+      Number(appointment.depositPaid || 0) > 0
+    ) {
+      setPaymentErrors(previous => ({
+        ...previous,
+        [appointmentId]:
+          'This appointment is no longer eligible for a deposit payment link. Refresh the appointment and review its status.',
+      }));
+
+      return;
+    }
+
+    if (
+      !Number.isFinite(depositAmount) ||
+      depositAmount < 0.5 ||
+      depositAmount > Number(appointment.totalPrice || 0) ||
+      !Number.isSafeInteger(
+        Math.round(depositAmount * 100)
+      )
+    ) {
+      setPaymentErrors(previous => ({
+        ...previous,
+        [appointmentId]:
+          'The requested deposit amount is invalid.',
+      }));
+
+      return;
+    }
+
+    if (!customerEmail.trim()) {
+      setPaymentErrors(previous => ({
+        ...previous,
+        [appointmentId]:
+          'A customer email address is required before sending the deposit payment link.',
+      }));
+
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Create or reuse a Stripe checkout for ${customerName}?\n\nDeposit: ${currency(
+        depositAmount
+      )}\nEmail: ${customerEmail}\n\nThe payment link will be emailed to the customer.\n\nThis uses your live Stripe payment system. The customer will not be charged until they complete checkout.\n\nContinue?`
+    );
+
+    if (!confirmed) return;
+
+    actionLock.current = true;
+
+    setProcessingId(appointmentId);
+    setSendingId(appointmentId);
+    setPaymentStage('checkout');
+
+    let checkoutReady = false;
+
+    try {
+      const checkout = await createDepositCheckout(
+        appointmentId
+      );
+
+      if (
+        typeof checkout.checkoutUrl !== 'string' ||
+        !checkout.checkoutUrl
+      ) {
+        throw new Error(
+          'Stripe checkout did not return a valid payment link. Review the checkout before retrying.'
+        );
+      }
+
+      const checkoutUrl = new URL(
+        checkout.checkoutUrl
+      );
+
+      if (
+        checkoutUrl.protocol !== 'https:' ||
+        checkoutUrl.hostname !== 'checkout.stripe.com'
+      ) {
+        throw new Error(
+          'The server returned an unexpected checkout URL. The payment email was not requested.'
+        );
+      }
+
+      checkoutReady = true;
+
+      setPaymentStage('email');
+
+      const emailResult = await sendDepositPaymentLink(
+        appointmentId
+      );
+
+      if (emailResult.emailAccepted !== true) {
+        throw new Error(
+          'The email provider did not confirm acceptance of the payment email.'
+        );
+      }
+
+      setEmailAccepted(previous => ({
+        ...previous,
+        [appointmentId]: true,
+      }));
+    } catch (caughtError) {
+      const message =
+        caughtError instanceof Error
+          ? caughtError.message
+          : 'Unable to complete the deposit payment workflow.';
+
+      setPaymentErrors(previous => ({
+        ...previous,
+        [appointmentId]: checkoutReady
+          ? `Stripe checkout is ready, but email acceptance could not be confirmed. ${message} Check Stripe and Resend before retrying.`
+          : `Checkout could not be confirmed. ${message} Check Stripe before retrying.`,
+      }));
+    } finally {
+      try {
+        await refreshAppointments();
+      } finally {
+        actionLock.current = false;
+
+        setProcessingId(null);
+        setSendingId(null);
+        setPaymentStage(null);
+      }
+    }
+  };
+
+  const openCancellation = (
+    appointmentId: string
+  ) => {
+    if (actionLock.current || processingId) return;
 
     clearDecisionMessages(appointmentId);
+
     setCancellingId(appointmentId);
     setCancellationReason('');
   };
 
   const closeCancellation = () => {
-    if (processingId) return;
+    if (actionLock.current || processingId) return;
 
     setCancellingId(null);
     setCancellationReason('');
@@ -458,7 +669,7 @@ const AdminAppointments = () => {
     appointmentTime: string,
     hasPaidDeposit: boolean
   ) => {
-    if (processingId) return;
+    if (actionLock.current || processingId) return;
 
     clearDecisionMessages(appointmentId);
 
@@ -470,6 +681,7 @@ const AdminAppointments = () => {
         [appointmentId]:
           'Enter a cancellation reason between 3 and 1000 characters.',
       }));
+
       return;
     }
 
@@ -487,13 +699,15 @@ const AdminAppointments = () => {
 
     if (!confirmed) return;
 
+    actionLock.current = true;
     setProcessingId(appointmentId);
 
     try {
-      const result = await cancellationMutation.mutateAsync({
-        appointmentId,
-        reason,
-      });
+      const result =
+        await cancellationMutation.mutateAsync({
+          appointmentId,
+          reason,
+        });
 
       setDecisionSuccess(previous => ({
         ...previous,
@@ -515,6 +729,7 @@ const AdminAppointments = () => {
             : 'Unable to cancel the appointment.',
       }));
     } finally {
+      actionLock.current = false;
       setProcessingId(null);
     }
   };
@@ -522,14 +737,20 @@ const AdminAppointments = () => {
   return (
     <AdminLayout>
       <div className="space-y-7">
+
         {/* PAGE HEADER */}
+
         <section className="relative overflow-hidden rounded-2xl border border-[#F0DCE3] bg-white px-6 py-8 shadow-[0_5px_24px_rgba(41,37,43,0.035)] sm:px-8 sm:py-10">
           <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-[#F7DDE4]/60 blur-3xl" />
 
           <div className="relative z-10 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="mb-3 flex items-center gap-2">
-                <Heart size={15} className="text-[#963F60]" />
+                <Heart
+                  size={15}
+                  className="text-[#963F60]"
+                />
+
                 <span className="brand-eyebrow">
                   Studio Management
                 </span>
@@ -552,6 +773,7 @@ const AdminAppointments = () => {
                 <p className="font-heading text-[30px] leading-none text-[#29252B]">
                   {isLoading ? '...' : counts.all}
                 </p>
+
                 <p className="mt-1 text-[11px] text-[#786A72]">
                   Total Requests
                 </p>
@@ -561,6 +783,7 @@ const AdminAppointments = () => {
         </section>
 
         {/* PENDING REQUESTS NOTICE */}
+
         {!isLoading && !error && counts.pending > 0 && (
           <section className="flex items-center gap-4 rounded-xl border border-[#EBCBD6] bg-[#FCECF1] px-5 py-4">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-[#963F60]">
@@ -578,12 +801,14 @@ const AdminAppointments = () => {
         )}
 
         {/* SEARCH AND FILTERS */}
+
         <section className="brand-card p-5 sm:p-6">
           <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="brand-eyebrow mb-2">
                 Booking Directory
               </p>
+
               <h2 className="font-heading text-[29px] text-[#29252B]">
                 Manage Appointments
               </h2>
@@ -594,6 +819,7 @@ const AdminAppointments = () => {
                 size={17}
                 className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#A28F98]"
               />
+
               <input
                 type="search"
                 aria-label="Search appointments"
@@ -609,7 +835,8 @@ const AdminAppointments = () => {
 
           <div className="flex flex-wrap gap-2">
             {filters.map(filter => {
-              const active = statusFilter === filter.key;
+              const active =
+                statusFilter === filter.key;
 
               return (
                 <button
@@ -632,6 +859,7 @@ const AdminAppointments = () => {
                   `}
                 >
                   {filter.label}
+
                   <span
                     className={`
                       rounded-md px-1.5 py-0.5
@@ -651,7 +879,8 @@ const AdminAppointments = () => {
           </div>
         </section>
 
-        {/* LOADING / ERROR */}
+        {/* LOADING AND ERROR STATES */}
+
         {isLoading && (
           <div
             role="status"
@@ -661,6 +890,7 @@ const AdminAppointments = () => {
               size={20}
               className="animate-spin text-[#963F60]"
             />
+
             Loading appointments...
           </div>
         )}
@@ -678,6 +908,7 @@ const AdminAppointments = () => {
         )}
 
         {/* APPOINTMENT CARDS */}
+
         {!isLoading && !error && (
           <div className="space-y-5">
             {filteredAppointments.map(appointment => {
@@ -685,9 +916,16 @@ const AdminAppointments = () => {
                 appointment.totalPrice || 0
               );
 
-              const depositPaid = appointment.depositPaidAt
-                ? Number(appointment.depositPaid || 0)
-                : 0;
+              const depositAmount = Number(
+                appointment.depositAmount || 0
+              );
+
+              const depositPaid =
+                appointment.depositPaidAt
+                  ? Number(
+                      appointment.depositPaid || 0
+                    )
+                  : 0;
 
               const balanceDue = Math.max(
                 0,
@@ -707,8 +945,19 @@ const AdminAppointments = () => {
               const isPending =
                 appointment.status === 'pending';
 
+              const isAwaitingDeposit =
+                appointment.status ===
+                'awaiting_deposit';
+
+              const canSendDepositLink =
+                isAwaitingDeposit &&
+                !appointment.depositPaidAt &&
+                Number(
+                  appointment.depositPaid || 0
+                ) === 0;
+
               const canCancel =
-                appointment.status === 'awaiting_deposit' ||
+                isAwaitingDeposit ||
                 appointment.status === 'confirmed';
 
               const isCancellationOpen =
@@ -717,19 +966,25 @@ const AdminAppointments = () => {
               const isProcessing =
                 processingId === appointment.id;
 
-              const isAnotherProcessing =
-                processingId !== null &&
-                processingId !== appointment.id;
+              const isSending =
+                sendingId === appointment.id;
+
+              const isBusy = processingId !== null;
 
               const depositInput =
                 depositInputs[appointment.id] ?? '';
+
+              const wasEmailAccepted =
+                emailAccepted[appointment.id] === true;
 
               return (
                 <Card
                   key={appointment.id}
                   className="brand-card overflow-hidden p-0"
                 >
+
                   {/* CARD HEADER */}
+
                   <div className="flex flex-col gap-4 border-b border-[#F2E5E9] bg-[#FFFBFC] px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6">
                     <div className="flex items-start gap-3">
                       <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#F7DDE4]/70 text-[#963F60]">
@@ -741,8 +996,10 @@ const AdminAppointments = () => {
 
                       <div className="min-w-0">
                         <h3 className="font-heading text-[29px] leading-tight text-[#29252B]">
-                          {appointment.customerName || 'Customer'}
+                          {appointment.customerName ||
+                            'Customer'}
                         </h3>
+
                         <p className="mt-1 text-xs text-[#96858E]">
                           Appointment Request
                         </p>
@@ -754,24 +1011,31 @@ const AdminAppointments = () => {
                         appointment.status
                       )}`}
                     >
-                      {getStatusLabel(appointment.status)}
+                      {getStatusLabel(
+                        appointment.status
+                      )}
                     </span>
                   </div>
 
                   {/* MAIN CONTENT */}
+
                   <div className="grid grid-cols-1 gap-6 p-5 lg:grid-cols-[minmax(0,1fr)_280px] sm:p-6">
                     <div className="min-w-0 space-y-6">
+
                       {/* DATE AND TIME */}
+
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div className="flex items-center gap-3 rounded-xl border border-[#F2E5E9] bg-[#FFF7F8] p-4">
                           <CalendarDays
                             size={20}
                             className="shrink-0 text-[#963F60]"
                           />
+
                           <div>
                             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#96858E]">
                               Appointment Date
                             </p>
+
                             <p className="mt-1 text-[13px] font-semibold text-[#29252B]">
                               {formatAppointmentDate(
                                 appointment.appointmentDate
@@ -785,10 +1049,12 @@ const AdminAppointments = () => {
                             size={20}
                             className="shrink-0 text-[#963F60]"
                           />
+
                           <div>
                             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#96858E]">
                               Appointment Time
                             </p>
+
                             <p className="mt-1 text-[13px] font-semibold text-[#29252B]">
                               {formatAppointmentTime(
                                 appointment.appointmentTime
@@ -798,7 +1064,8 @@ const AdminAppointments = () => {
                         </div>
                       </div>
 
-                      {/* CUSTOMER CONTACT */}
+                      {/* CUSTOMER INFORMATION */}
+
                       <div>
                         <p className="brand-eyebrow mb-3">
                           Customer Information
@@ -814,8 +1081,11 @@ const AdminAppointments = () => {
                                 size={16}
                                 className="shrink-0 text-[#963F60]"
                               />
+
                               <span className="break-all">
-                                {appointment.customerEmail}
+                                {
+                                  appointment.customerEmail
+                                }
                               </span>
                             </a>
                           )}
@@ -829,13 +1099,15 @@ const AdminAppointments = () => {
                                 size={16}
                                 className="shrink-0 text-[#963F60]"
                               />
+
                               {appointment.customerPhone}
                             </a>
                           )}
                         </div>
                       </div>
 
-                      {/* SERVICES */}
+                      {/* SELECTED SERVICES */}
+
                       <div>
                         <p className="brand-eyebrow mb-3">
                           Selected Services
@@ -848,7 +1120,10 @@ const AdminAppointments = () => {
                         ) : (
                           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             {services.map(
-                              (item: any, index: number) => {
+                              (
+                                item: any,
+                                index: number
+                              ) => {
                                 const service =
                                   item?.service || item;
 
@@ -880,7 +1155,9 @@ const AdminAppointments = () => {
                                       />
                                     ) : (
                                       <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-[#FFF7F8] text-[#963F60]">
-                                        <Scissors size={21} />
+                                        <Scissors
+                                          size={21}
+                                        />
                                       </div>
                                     )}
 
@@ -888,6 +1165,7 @@ const AdminAppointments = () => {
                                       <p className="text-[12px] font-semibold leading-5 text-[#29252B]">
                                         {title}
                                       </p>
+
                                       <p className="mt-1 text-xs font-semibold text-[#963F60]">
                                         {currency(price)}
                                       </p>
@@ -900,7 +1178,8 @@ const AdminAppointments = () => {
                         )}
                       </div>
 
-                      {/* NOTES */}
+                      {/* CUSTOMER NOTES */}
+
                       {appointment.notes && (
                         <div className="rounded-xl border border-[#F2E5E9] bg-[#FFFBFC] p-4">
                           <div className="mb-2 flex items-center gap-2">
@@ -908,6 +1187,7 @@ const AdminAppointments = () => {
                               size={16}
                               className="text-[#963F60]"
                             />
+
                             <p className="text-[12px] font-semibold text-[#29252B]">
                               Customer Notes
                             </p>
@@ -920,6 +1200,7 @@ const AdminAppointments = () => {
                       )}
 
                       {/* INSPIRATION PHOTO */}
+
                       {appointment.inspirationUrl && (
                         <div>
                           <div className="mb-3 flex items-center gap-2">
@@ -927,19 +1208,24 @@ const AdminAppointments = () => {
                               size={16}
                               className="text-[#963F60]"
                             />
+
                             <p className="text-[12px] font-semibold text-[#29252B]">
                               Inspiration Photo
                             </p>
                           </div>
 
                           <a
-                            href={appointment.inspirationUrl}
+                            href={
+                              appointment.inspirationUrl
+                            }
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-block overflow-hidden rounded-xl border border-[#F2E5E9] bg-[#FFF7F8]"
                           >
                             <img
-                              src={appointment.inspirationUrl}
+                              src={
+                                appointment.inspirationUrl
+                              }
                               alt="Customer nail inspiration"
                               loading="lazy"
                               className="h-36 w-36 object-contain"
@@ -950,6 +1236,7 @@ const AdminAppointments = () => {
                     </div>
 
                     {/* PAYMENT SUMMARY */}
+
                     <div className="space-y-4">
                       <div className="overflow-hidden rounded-xl border border-[#EBCBD6] bg-[#FFF7F8]">
                         <div className="border-b border-[#EBCBD6] bg-[#F7DDE4]/55 px-5 py-4">
@@ -958,6 +1245,7 @@ const AdminAppointments = () => {
                               size={18}
                               className="text-[#963F60]"
                             />
+
                             <h4 className="text-[13px] font-semibold text-[#29252B]">
                               Payment Summary
                             </h4>
@@ -969,6 +1257,7 @@ const AdminAppointments = () => {
                             <span className="text-xs text-[#786A72]">
                               Service Total
                             </span>
+
                             <span className="text-[13px] font-semibold text-[#29252B]">
                               {currency(totalPrice)}
                             </span>
@@ -978,8 +1267,10 @@ const AdminAppointments = () => {
                             <span className="text-xs text-[#786A72]">
                               Deposit Requested
                             </span>
+
                             <span className="text-[13px] font-semibold text-[#29252B]">
-                              {appointment.depositAmount != null
+                              {appointment.depositAmount !=
+                              null
                                 ? currency(
                                     appointment.depositAmount
                                   )
@@ -991,6 +1282,7 @@ const AdminAppointments = () => {
                             <span className="text-xs text-[#786A72]">
                               Deposit Paid
                             </span>
+
                             <span className="text-[13px] font-semibold text-[#397A53]">
                               {currency(depositPaid)}
                             </span>
@@ -1001,6 +1293,7 @@ const AdminAppointments = () => {
                               <span className="text-xs font-semibold text-[#29252B]">
                                 Remaining Balance
                               </span>
+
                               <span className="font-heading text-[25px] font-semibold text-[#963F60]">
                                 {currency(balanceDue)}
                               </span>
@@ -1035,9 +1328,10 @@ const AdminAppointments = () => {
                             >
                               {hasPaidDeposit
                                 ? 'Deposit payment recorded.'
-                                : appointment.status ===
-                                    'awaiting_deposit'
-                                  ? 'Awaiting deposit. The Stripe payment link has not been connected yet.'
+                                : isAwaitingDeposit
+                                  ? wasEmailAccepted
+                                    ? 'Payment email accepted by the email provider. Awaiting customer payment.'
+                                    : 'Awaiting deposit. Use the deposit payment controls below to create or reuse a checkout and send the payment link.'
                                   : 'No deposit payment has been recorded.'}
                             </p>
                           </div>
@@ -1045,6 +1339,7 @@ const AdminAppointments = () => {
                       </div>
 
                       {/* CURRENT REQUEST STATUS */}
+
                       <div className="rounded-xl border border-[#F2E5E9] bg-white p-4">
                         <p className="brand-eyebrow mb-2">
                           Request Status
@@ -1061,11 +1356,11 @@ const AdminAppointments = () => {
                         </span>
 
                         <p className="mt-3 text-[11px] leading-5 text-[#96858E]">
-                          {appointment.status === 'pending'
+                          {appointment.status ===
+                          'pending'
                             ? 'This request is waiting for administrator review.'
-                            : appointment.status ===
-                                'awaiting_deposit'
-                              ? 'Approved, but not confirmed. Stripe payment setup is still required.'
+                            : isAwaitingDeposit
+                              ? 'Approved, but not confirmed. The appointment requires a completed deposit payment.'
                               : appointment.status ===
                                   'confirmed'
                                 ? 'This appointment is confirmed.'
@@ -1082,6 +1377,7 @@ const AdminAppointments = () => {
                   </div>
 
                   {/* ADMIN APPROVAL CONTROLS */}
+
                   {isPending && (
                     <div className="border-t border-[#EBCBD6] bg-[#FFF7F8] px-5 py-6 sm:px-6">
                       <div className="mb-5 flex items-start gap-3">
@@ -1093,9 +1389,11 @@ const AdminAppointments = () => {
                           <h4 className="font-heading text-[25px] text-[#29252B]">
                             Review Appointment
                           </h4>
+
                           <p className="mt-1 text-[12px] leading-5 text-[#786A72]">
                             Set the deposit amount before
-                            approving, or decline this request.
+                            approving, or decline this
+                            request.
                           </p>
                         </div>
                       </div>
@@ -1113,25 +1411,26 @@ const AdminAppointments = () => {
                             size={17}
                             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#963F60]"
                           />
+
                           <input
                             id={`deposit-${appointment.id}`}
                             type="number"
-                            min="0.01"
+                            min="0.50"
                             max={totalPrice}
                             step="0.01"
                             inputMode="decimal"
                             placeholder="Enter deposit amount"
                             value={depositInput}
-                            disabled={
-                              isProcessing ||
-                              isAnotherProcessing
-                            }
+                            disabled={isBusy}
                             onChange={event => {
-                              setDepositInputs(previous => ({
-                                ...previous,
-                                [appointment.id]:
-                                  event.target.value,
-                              }));
+                              setDepositInputs(
+                                previous => ({
+                                  ...previous,
+                                  [appointment.id]:
+                                    event.target.value,
+                                })
+                              );
+
                               clearDecisionMessages(
                                 appointment.id
                               );
@@ -1146,6 +1445,10 @@ const AdminAppointments = () => {
                             {currency(totalPrice)}
                           </span>
                         </p>
+
+                        <p className="mt-1 text-[11px] text-[#786A72]">
+                          Minimum deposit: $0.50
+                        </p>
                       </div>
 
                       <div className="mt-4 rounded-lg border border-[#EBCBD6] bg-white p-4">
@@ -1154,35 +1457,42 @@ const AdminAppointments = () => {
                             size={17}
                             className="mt-0.5 shrink-0 text-[#963F60]"
                           />
+
                           <p className="text-[11px] leading-5 text-[#786A72]">
                             Approval will reserve the
                             appointment as{' '}
-                            <strong>Awaiting Deposit</strong>.
-                            No payment link or customer
-                            notification will be sent yet.
-                            The appointment is not confirmed
-                            until the Stripe payment workflow
-                            is completed.
+                            <strong>
+                              Awaiting Deposit
+                            </strong>
+                            . No payment link or customer
+                            notification will be sent until
+                            you select Create Checkout &amp;
+                            Send Link. The appointment is
+                            not confirmed until the Stripe
+                            payment workflow is completed.
                           </p>
                         </div>
                       </div>
 
-                      {decisionErrors[appointment.id] && (
+                      {decisionErrors[
+                        appointment.id
+                      ] && (
                         <div
                           role="alert"
-                          className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-700"
+                          className={errorClass}
                         >
-                          {decisionErrors[appointment.id]}
+                          {
+                            decisionErrors[
+                              appointment.id
+                            ]
+                          }
                         </div>
                       )}
 
                       <div className="mt-5 flex flex-col gap-3 sm:flex-row">
                         <button
                           type="button"
-                          disabled={
-                            isProcessing ||
-                            isAnotherProcessing
-                          }
+                          disabled={isBusy}
                           onClick={() =>
                             handleDecision(
                               appointment.id,
@@ -1192,7 +1502,7 @@ const AdminAppointments = () => {
                               totalPrice
                             )
                           }
-                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#963F60] px-5 py-3 text-[12px] font-semibold text-white transition-colors hover:bg-[#79324F] disabled:cursor-not-allowed disabled:opacity-60"
+                          className={primaryButtonClass}
                         >
                           {isProcessing ? (
                             <Loader2
@@ -1202,15 +1512,13 @@ const AdminAppointments = () => {
                           ) : (
                             <CheckCircle2 size={17} />
                           )}
+
                           Approve Request
                         </button>
 
                         <button
                           type="button"
-                          disabled={
-                            isProcessing ||
-                            isAnotherProcessing
-                          }
+                          disabled={isBusy}
                           onClick={() =>
                             handleDecision(
                               appointment.id,
@@ -1220,7 +1528,9 @@ const AdminAppointments = () => {
                               totalPrice
                             )
                           }
-                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#DCA7B6] bg-white px-5 py-3 text-[12px] font-semibold text-[#963F60] transition-colors hover:border-[#963F60] hover:bg-[#FCECF1] disabled:cursor-not-allowed disabled:opacity-60"
+                          className={
+                            secondaryButtonClass
+                          }
                         >
                           {isProcessing ? (
                             <Loader2
@@ -1230,13 +1540,214 @@ const AdminAppointments = () => {
                           ) : (
                             <XCircle size={17} />
                           )}
+
                           Decline Request
                         </button>
                       </div>
                     </div>
                   )}
 
-                  {/* NEW: ADMIN CANCELLATION CONTROLS */}
+                  {/* STRIPE DEPOSIT PAYMENT CONTROLS */}
+
+                  {canSendDepositLink && (
+                    <div className="border-t border-[#EBCBD6] bg-[#FFF7F8] px-5 py-6 sm:px-6">
+                      <div className="mb-5 flex items-start gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-[#963F60]">
+                          <Mail size={21} />
+                        </div>
+
+                        <div>
+                          <h4 className="font-heading text-[25px] text-[#29252B]">
+                            Deposit Payment
+                          </h4>
+
+                          <p className="mt-1 max-w-xl text-[12px] leading-5 text-[#786A72]">
+                            Create a secure Stripe checkout
+                            and email the deposit payment
+                            link to the customer. An
+                            eligible existing checkout will
+                            be reused by the server.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="rounded-xl border border-[#EBCBD6] bg-white p-4">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#96858E]">
+                            Required Deposit
+                          </p>
+
+                          <p className="mt-2 font-heading text-[28px] font-semibold text-[#963F60]">
+                            {currency(depositAmount)}
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl border border-[#EBCBD6] bg-white p-4">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#96858E]">
+                            Payment Email Recipient
+                          </p>
+
+                          <p className="mt-2 break-all text-[13px] font-semibold text-[#29252B]">
+                            {appointment.customerEmail ||
+                              'No email address available'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mb-4 rounded-lg border border-[#EBCBD6] bg-white p-4">
+                        <div className="flex items-start gap-2">
+                          <ShieldCheck
+                            size={18}
+                            className="mt-0.5 shrink-0 text-[#963F60]"
+                          />
+
+                          <div className="space-y-2 text-[12px] leading-5 text-[#786A72]">
+                            <p>
+                              The customer will receive a
+                              secure payment link through
+                              email.
+                            </p>
+
+                            <p>
+                              Creating a checkout does not
+                              charge the customer or mark
+                              the deposit as paid.
+                            </p>
+
+                            <p>
+                              The appointment remains
+                              Awaiting Deposit until the
+                              payment is verified by the
+                              server.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {wasEmailAccepted && (
+                        <div
+                          role="status"
+                          className={successClass}
+                        >
+                          <div className="flex items-start gap-2">
+                            <CheckCircle2
+                              size={18}
+                              className="mt-0.5 shrink-0"
+                            />
+
+                            <div>
+                              <p className="font-semibold">
+                                Deposit payment email
+                                accepted
+                              </p>
+
+                              <p className="mt-1">
+                                Resend accepted the deposit
+                                payment email. Delivery is
+                                not yet confirmed.
+                              </p>
+
+                              <p className="mt-1">
+                                Awaiting customer payment.
+                                This email acceptance
+                                notice is retained for the
+                                current page session.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {paymentErrors[
+                        appointment.id
+                      ] && (
+                        <div
+                          role="alert"
+                          className={errorClass}
+                        >
+                          {
+                            paymentErrors[
+                              appointment.id
+                            ]
+                          }
+                        </div>
+                      )}
+
+                      {isSending && (
+                        <div
+                          role="status"
+                          className="mt-4 flex items-center gap-2 rounded-lg border border-[#EBCBD6] bg-white p-4 text-[12px] text-[#963F60]"
+                        >
+                          <Loader2
+                            size={18}
+                            className="animate-spin"
+                          />
+
+                          {paymentStage === 'email'
+                            ? 'Sending deposit payment email...'
+                            : 'Creating or verifying Stripe checkout...'}
+                        </div>
+                      )}
+
+                      <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                        <button
+                          type="button"
+                          disabled={
+                            isBusy ||
+                            isCancellationOpen ||
+                            wasEmailAccepted ||
+                            !appointment.customerEmail ||
+                            !Number.isFinite(
+                              depositAmount
+                            ) ||
+                            depositAmount < 0.5 ||
+                            depositAmount > totalPrice
+                          }
+                          onClick={() =>
+                            handleSendDepositLink(
+                              appointment.id,
+                              appointment.customerName ||
+                                'this customer',
+                              appointment.customerEmail ||
+                                '',
+                              depositAmount
+                            )
+                          }
+                          className={primaryButtonClass}
+                        >
+                          {isSending ? (
+                            <Loader2
+                              size={17}
+                              className="animate-spin"
+                            />
+                          ) : wasEmailAccepted ? (
+                            <CheckCircle2 size={17} />
+                          ) : (
+                            <Mail size={17} />
+                          )}
+
+                          {isSending
+                            ? paymentStage === 'email'
+                              ? 'Sending Payment Email...'
+                              : 'Creating Checkout...'
+                            : wasEmailAccepted
+                              ? 'Payment Email Accepted'
+                              : 'Create Checkout & Send Link'}
+                        </button>
+                      </div>
+
+                      <p className="mt-3 text-[11px] leading-5 text-[#96858E]">
+                        Payment links are subject to the
+                        appointment deposit deadline and
+                        Stripe checkout expiration.
+                        If an error occurs, review Stripe
+                        and Resend before retrying.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* ADMIN CANCELLATION CONTROLS */}
+
                   {canCancel && (
                     <div className="border-t border-[#EBCBD6] bg-[#FFFBFC] px-5 py-6 sm:px-6">
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -1262,13 +1773,16 @@ const AdminAppointments = () => {
                         {!isCancellationOpen && (
                           <button
                             type="button"
-                            disabled={processingId !== null}
+                            disabled={isBusy}
                             onClick={() =>
-                              openCancellation(appointment.id)
+                              openCancellation(
+                                appointment.id
+                              )
                             }
                             className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-[#DCA7B6] bg-white px-5 py-3 text-[12px] font-semibold text-[#A5465B] transition-colors hover:border-[#A5465B] hover:bg-[#FFF0F2] disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <XCircle size={17} />
+
                             Cancel Appointment
                           </button>
                         )}
@@ -1282,6 +1796,7 @@ const AdminAppointments = () => {
                               className="mb-2 block text-[12px] font-semibold text-[#29252B]"
                             >
                               Cancellation Reason
+
                               <span className="ml-1 text-[#A5465B]">
                                 *
                               </span>
@@ -1294,20 +1809,23 @@ const AdminAppointments = () => {
                                 setCancellationReason(
                                   event.target.value
                                 );
+
                                 clearDecisionMessages(
                                   appointment.id
                                 );
                               }}
                               maxLength={1000}
                               rows={4}
-                              disabled={processingId !== null}
+                              disabled={isBusy}
                               placeholder="Explain why this appointment is being cancelled..."
                               className="w-full resize-y rounded-lg border border-[#EBCBD6] bg-[#FFFBFC] px-4 py-3 text-[13px] text-[#29252B] outline-none transition-colors placeholder:text-[#A28F98] focus:border-[#963F60] focus:ring-2 focus:ring-[#963F60]/10 disabled:opacity-60"
                             />
 
                             <p className="mt-2 text-right text-[11px] text-[#96858E]">
-                              {cancellationReason.length}/1000
-                              characters
+                              {
+                                cancellationReason.length
+                              }
+                              /1000 characters
                             </p>
                           </div>
 
@@ -1325,8 +1843,8 @@ const AdminAppointments = () => {
                                   </strong>{' '}
                                   This action changes the
                                   appointment status to
-                                  Cancelled and releases the
-                                  reserved time.
+                                  Cancelled and releases
+                                  the reserved time.
                                 </p>
 
                                 <p>
@@ -1337,8 +1855,8 @@ const AdminAppointments = () => {
 
                                 <p>
                                   Refunds are not automatic.
-                                  Any deposit refund must be
-                                  handled separately.
+                                  Any deposit refund must
+                                  be handled separately.
                                 </p>
                               </div>
                             </div>
@@ -1354,6 +1872,7 @@ const AdminAppointments = () => {
                                   size={18}
                                   className="mt-0.5 shrink-0 text-[#91641E]"
                                 />
+
                                 <p className="text-[12px] leading-5 text-[#91641E]">
                                   <strong>
                                     Paid deposit warning:
@@ -1361,20 +1880,11 @@ const AdminAppointments = () => {
                                   This customer has paid{' '}
                                   {currency(depositPaid)}.
                                   Cancelling will not
-                                  automatically refund that
-                                  payment. Review the
-                                  payment separately.
+                                  automatically refund
+                                  that payment. Review
+                                  the payment separately.
                                 </p>
                               </div>
-                            </div>
-                          )}
-
-                          {decisionErrors[appointment.id] && (
-                            <div
-                              role="alert"
-                              className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-700"
-                            >
-                              {decisionErrors[appointment.id]}
                             </div>
                           )}
 
@@ -1382,9 +1892,11 @@ const AdminAppointments = () => {
                             <button
                               type="button"
                               disabled={
-                                processingId !== null ||
-                                cancellationReason.trim().length < 3 ||
-                                cancellationReason.trim().length > 1000
+                                isBusy ||
+                                cancellationReason.trim()
+                                  .length < 3 ||
+                                cancellationReason.trim()
+                                  .length > 1000
                               }
                               onClick={() =>
                                 handleCancellation(
@@ -1412,7 +1924,7 @@ const AdminAppointments = () => {
 
                             <button
                               type="button"
-                              disabled={processingId !== null}
+                              disabled={isBusy}
                               onClick={closeCancellation}
                               className="inline-flex min-h-11 items-center justify-center rounded-lg border border-[#EBD8DF] bg-white px-5 py-3 text-[12px] font-semibold text-[#786A72] transition-colors hover:bg-[#FFF7F8] disabled:cursor-not-allowed disabled:opacity-60"
                             >
@@ -1422,20 +1934,28 @@ const AdminAppointments = () => {
                         </div>
                       )}
 
-                      {!isCancellationOpen &&
-                        decisionErrors[appointment.id] && (
-                          <div
-                            role="alert"
-                            className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-700"
-                          >
-                            {decisionErrors[appointment.id]}
-                          </div>
-                        )}
+                      {decisionErrors[
+                        appointment.id
+                      ] && (
+                        <div
+                          role="alert"
+                          className={errorClass}
+                        >
+                          {
+                            decisionErrors[
+                              appointment.id
+                            ]
+                          }
+                        </div>
+                      )}
                     </div>
                   )}
 
                   {/* DECISION SUCCESS MESSAGE */}
-                  {decisionSuccess[appointment.id] && (
+
+                  {decisionSuccess[
+                    appointment.id
+                  ] && (
                     <div
                       role="status"
                       className="flex items-start gap-3 border-t border-[#C7E4D2] bg-[#EFF9F2] px-5 py-4 sm:px-6"
@@ -1446,7 +1966,11 @@ const AdminAppointments = () => {
                       />
 
                       <p className="text-[12px] leading-5 text-[#397A53]">
-                        {decisionSuccess[appointment.id]}
+                        {
+                          decisionSuccess[
+                            appointment.id
+                          ]
+                        }
                       </p>
                     </div>
                   )}
@@ -1455,6 +1979,7 @@ const AdminAppointments = () => {
             })}
 
             {/* EMPTY RESULTS */}
+
             {filteredAppointments.length === 0 && (
               <div className="brand-card flex flex-col items-center px-6 py-14 text-center">
                 <CalendarDays
