@@ -1,10 +1,11 @@
-
 import { neon } from '@neondatabase/serverless';
+
 import { requireAdmin } from './_admin-auth.js';
 import { escapeHtml } from './_email.js';
 
 /* =========================================
    INLOVENAILZ BY BRIANA
+
    ADMIN SEND DEPOSIT LINK
 
    - Admin-only endpoint
@@ -14,6 +15,7 @@ import { escapeHtml } from './_email.js';
    - Sends the verified link through Resend
    - Uses a stable Resend idempotency key
    - Never marks an appointment paid
+   - Includes safe diagnostic logging
 ========================================= */
 
 const UUID_PATTERN =
@@ -50,10 +52,27 @@ type StripeSession = {
 
 type ResendResponse = {
   id?: string;
+  name?: string;
   message?: string;
+  statusCode?: number;
 };
 
-function toCents(value: string | number | null): number {
+type ProcessingStage =
+  | 'configuration'
+  | 'database_connection'
+  | 'appointment_lookup'
+  | 'appointment_validation'
+  | 'payment_exception_lookup'
+  | 'stripe_session_lookup'
+  | 'stripe_session_validation'
+  | 'email_preparation'
+  | 'resend_request'
+  | 'resend_response'
+  | 'complete';
+
+function toCents(
+  value: string | number | null
+): number {
   if (value === null) return NaN;
 
   const amount = Number(value);
@@ -74,11 +93,41 @@ function money(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-function validEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+function validEmail(value: unknown): boolean {
+  return (
+    typeof value === 'string' &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+      value.trim()
+    )
+  );
 }
 
-export default async function handler(req: any, res: any) {
+function validCheckoutUrl(
+  value: unknown
+): value is string {
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  try {
+    const url = new URL(value);
+
+    return (
+      url.protocol === 'https:' &&
+      url.hostname === 'checkout.stripe.com' &&
+      !url.username &&
+      !url.password &&
+      !url.port
+    );
+  } catch {
+    return false;
+  }
+}
+
+export default async function handler(
+  req: any,
+  res: any
+) {
   res.setHeader('Cache-Control', 'no-store');
 
   if (req.method !== 'POST') {
@@ -94,12 +143,37 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
+  let stage: ProcessingStage = 'configuration';
+
   const databaseUrl = process.env.DATABASE_URL;
   const stripeKey = process.env.STRIPE_SECRET_KEY;
   const resendKey = process.env.RESEND_API_KEY;
   const emailFrom = process.env.EMAIL_FROM;
 
-  if (!databaseUrl || !stripeKey || !resendKey || !emailFrom) {
+  const missingConfiguration: string[] = [];
+
+  if (!databaseUrl?.trim()) {
+    missingConfiguration.push('DATABASE_URL');
+  }
+
+  if (!stripeKey?.trim()) {
+    missingConfiguration.push('STRIPE_SECRET_KEY');
+  }
+
+  if (!resendKey?.trim()) {
+    missingConfiguration.push('RESEND_API_KEY');
+  }
+
+  if (!emailFrom?.trim()) {
+    missingConfiguration.push('EMAIL_FROM');
+  }
+
+  if (missingConfiguration.length > 0) {
+    console.error(
+      '[Admin Deposit Email] Missing configuration:',
+      missingConfiguration
+    );
+
     return res.status(500).json({
       success: false,
       error: 'Payment email configuration is incomplete.',
@@ -118,8 +192,23 @@ export default async function handler(req: any, res: any) {
     });
   }
 
+  const logStage = (
+    nextStage: ProcessingStage
+  ) => {
+    stage = nextStage;
+
+    console.info('[Admin Deposit Email]', {
+      appointmentId,
+      stage,
+    });
+  };
+
   try {
-    const sql = neon(databaseUrl);
+    logStage('database_connection');
+
+    const sql = neon(databaseUrl!);
+
+    logStage('appointment_lookup');
 
     const rows = await sql`
       SELECT
@@ -150,6 +239,8 @@ export default async function handler(req: any, res: any) {
 
     const appointment = rows[0] as Appointment;
 
+    logStage('appointment_validation');
+
     if (
       appointment.status !== 'awaiting_deposit' ||
       appointment.deposit_paid_at !== null ||
@@ -161,25 +252,36 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    if (appointment.deposit_checkout_claim_id !== null) {
+    if (
+      appointment.deposit_checkout_claim_id !== null
+    ) {
       return res.status(409).json({
         success: false,
-        error: 'Checkout creation requires reconciliation before emailing.',
+        error:
+          'Checkout creation requires reconciliation before emailing.',
       });
     }
 
     if (
       !appointment.stripe_checkout_session_id ||
-      !appointment.stripe_checkout_session_id.startsWith('cs_')
+      !appointment.stripe_checkout_session_id.startsWith(
+        'cs_'
+      )
     ) {
       return res.status(409).json({
         success: false,
-        error: 'Create the deposit checkout before sending its link.',
+        error:
+          'Create the deposit checkout before sending its link.',
       });
     }
 
-    const depositCents = toCents(appointment.deposit_amount);
-    const totalCents = toCents(appointment.total_price);
+    const depositCents = toCents(
+      appointment.deposit_amount
+    );
+
+    const totalCents = toCents(
+      appointment.total_price
+    );
 
     if (
       !Number.isSafeInteger(depositCents) ||
@@ -203,14 +305,23 @@ export default async function handler(req: any, res: any) {
     const deadlineMs =
       appointment.deposit_expires_at instanceof Date
         ? appointment.deposit_expires_at.getTime()
-        : Date.parse(String(appointment.deposit_expires_at ?? ''));
+        : Date.parse(
+            String(
+              appointment.deposit_expires_at ?? ''
+            )
+          );
 
-    if (!Number.isFinite(deadlineMs) || deadlineMs <= Date.now()) {
+    if (
+      !Number.isFinite(deadlineMs) ||
+      deadlineMs <= Date.now()
+    ) {
       return res.status(409).json({
         success: false,
         error: 'The deposit payment deadline has expired.',
       });
     }
+
+    logStage('payment_exception_lookup');
 
     const reviewRows = await sql`
       SELECT id
@@ -223,11 +334,15 @@ export default async function handler(req: any, res: any) {
     if (reviewRows.length) {
       return res.status(409).json({
         success: false,
-        error: 'A payment exception requires review before emailing.',
+        error:
+          'A payment exception requires review before emailing.',
       });
     }
 
-    const sessionId = appointment.stripe_checkout_session_id;
+    const sessionId =
+      appointment.stripe_checkout_session_id;
+
+    logStage('stripe_session_lookup');
 
     const stripeResponse = await fetch(
       `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(
@@ -236,13 +351,23 @@ export default async function handler(req: any, res: any) {
       {
         method: 'GET',
         headers: {
-          Authorization: `Bearer ${stripeKey}`,
+          Authorization: `Bearer ${stripeKey!.trim()}`,
         },
         signal: AbortSignal.timeout(15000),
       }
     );
 
     if (!stripeResponse.ok) {
+      console.error(
+        '[Admin Deposit Email] Stripe request rejected',
+        {
+          appointmentId,
+          status: stripeResponse.status,
+          requestId:
+            stripeResponse.headers.get('request-id'),
+        }
+      );
+
       throw new Error(
         `Stripe session verification failed (${stripeResponse.status}).`
       );
@@ -251,27 +376,89 @@ export default async function handler(req: any, res: any) {
     const session =
       (await stripeResponse.json()) as StripeSession;
 
+    logStage('stripe_session_validation');
+
     const nowSeconds = Math.floor(Date.now() / 1000);
-    const deadlineSeconds = Math.floor(deadlineMs / 1000);
+
+    const deadlineSeconds = Math.floor(
+      deadlineMs / 1000
+    );
+
+    const validationFailures: string[] = [];
+
+    if (session.id !== sessionId) {
+      validationFailures.push('session_id_mismatch');
+    }
+
+    if (session.mode !== 'payment') {
+      validationFailures.push('invalid_session_mode');
+    }
+
+    if (session.status !== 'open') {
+      validationFailures.push('session_not_open');
+    }
+
+    if (session.payment_status !== 'unpaid') {
+      validationFailures.push('session_not_unpaid');
+    }
+
+    if (session.payment_intent) {
+      validationFailures.push(
+        'payment_intent_already_exists'
+      );
+    }
+
+    if (session.currency !== 'usd') {
+      validationFailures.push('currency_mismatch');
+    }
+
+    if (session.amount_total !== depositCents) {
+      validationFailures.push('deposit_amount_mismatch');
+    }
 
     if (
-      session.id !== sessionId ||
-      session.mode !== 'payment' ||
-      session.status !== 'open' ||
-      session.payment_status !== 'unpaid' ||
-      session.payment_intent ||
-      session.currency !== 'usd' ||
-      session.amount_total !== depositCents ||
       session.metadata?.payment_type !==
-        'neon_appointment_deposit' ||
-      session.metadata?.appointment_id !== appointmentId ||
-      typeof session.expires_at !== 'number' ||
-      !Number.isSafeInteger(session.expires_at) ||
-      session.expires_at <= nowSeconds ||
-      session.expires_at > deadlineSeconds ||
-      typeof session.url !== 'string' ||
-      !session.url.startsWith('https://checkout.stripe.com/')
+      'neon_appointment_deposit'
     ) {
+      validationFailures.push('payment_type_mismatch');
+    }
+
+    if (
+      session.metadata?.appointment_id !== appointmentId
+    ) {
+      validationFailures.push('appointment_id_mismatch');
+    }
+
+    if (
+      typeof session.expires_at !== 'number' ||
+      !Number.isSafeInteger(session.expires_at)
+    ) {
+      validationFailures.push('invalid_session_expiration');
+    } else {
+      if (session.expires_at <= nowSeconds) {
+        validationFailures.push('session_expired');
+      }
+
+      if (session.expires_at > deadlineSeconds) {
+        validationFailures.push(
+          'session_exceeds_deposit_deadline'
+        );
+      }
+    }
+
+    if (!validCheckoutUrl(session.url)) {
+      validationFailures.push('invalid_checkout_url');
+    }
+
+    if (validationFailures.length > 0) {
+      console.error(
+        '[Admin Deposit Email] Stripe validation failed',
+        {
+          appointmentId,
+          failures: validationFailures,
+        }
+      );
+
       return res.status(409).json({
         success: false,
         error:
@@ -279,9 +466,27 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    const customerName = escapeHtml(appointment.customer_name);
-    const appointmentDate = escapeHtml(appointment.appointment_date);
-    const appointmentTime = escapeHtml(appointment.appointment_time);
+    if (!validCheckoutUrl(session.url)) {
+      return res.status(409).json({
+        success: false,
+        error: 'The Stripe checkout URL is invalid.',
+      });
+    }
+
+    logStage('email_preparation');
+
+    const customerName = escapeHtml(
+      String(appointment.customer_name ?? 'Customer')
+    );
+
+    const appointmentDate = escapeHtml(
+      String(appointment.appointment_date ?? '')
+    );
+
+    const appointmentTime = escapeHtml(
+      String(appointment.appointment_time ?? '')
+    );
+
     const checkoutUrl = escapeHtml(session.url);
 
     const html = `
@@ -292,6 +497,7 @@ export default async function handler(req: any, res: any) {
         max-width: 600px;
         margin: 0 auto;
       ">
+
         <h2 style="color: #963F60;">
           Your Appointment Has Been Approved!
         </h2>
@@ -338,8 +544,9 @@ export default async function handler(req: any, res: any) {
           <strong>Important:</strong>
           Your appointment is not confirmed until
           your deposit payment has been verified.
-          This payment link expires at the approved
-          deposit deadline.
+
+          This payment link is subject to the approved
+          deposit deadline and Stripe checkout expiration.
         </p>
 
         <p>
@@ -355,28 +562,34 @@ export default async function handler(req: any, res: any) {
           With love,<br />
           <strong>InLoveNailz by Briana</strong>
         </p>
+
       </div>
     `;
+
+    logStage('resend_request');
 
     const resendResponse = await fetch(
       'https://api.resend.com/emails',
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${resendKey}`,
+          Authorization: `Bearer ${resendKey!.trim()}`,
           'Content-Type': 'application/json',
           'Idempotency-Key':
             `inl-deposit-link-${sessionId}`,
         },
         body: JSON.stringify({
-          from: emailFrom,
+          from: emailFrom!.trim(),
           to: [appointment.customer_email.trim()],
-          subject: 'InLoveNailz | Pay Your Appointment Deposit',
+          subject:
+            'InLoveNailz | Pay Your Appointment Deposit',
           html,
         }),
         signal: AbortSignal.timeout(15000),
       }
     );
+
+    logStage('resend_response');
 
     let emailResult: ResendResponse = {};
 
@@ -384,17 +597,51 @@ export default async function handler(req: any, res: any) {
       emailResult =
         (await resendResponse.json()) as ResendResponse;
     } catch {
+      console.error(
+        '[Admin Deposit Email] Invalid Resend response',
+        {
+          appointmentId,
+          status: resendResponse.status,
+        }
+      );
+
       throw new Error(
-        'Unable to verify the payment email response. Check Resend before retrying.'
+        'Unable to verify the payment email response.'
       );
     }
 
-    if (!resendResponse.ok || !emailResult.id) {
+    if (
+      !resendResponse.ok ||
+      typeof emailResult.id !== 'string' ||
+      !emailResult.id
+    ) {
+      console.error(
+        '[Admin Deposit Email] Resend acceptance failed',
+        {
+          appointmentId,
+          status: resendResponse.status,
+          errorName:
+            typeof emailResult.name === 'string' &&
+            /^[a-zA-Z0-9_-]{1,80}$/.test(emailResult.name)
+              ? emailResult.name
+              : 'unknown_error',
+        }
+      );
+
       throw new Error(
-        emailResult.message ||
-          `Resend did not accept the email (${resendResponse.status}).`
+        `Resend email acceptance could not be verified (${resendResponse.status}).`
       );
     }
+
+    logStage('complete');
+
+    console.info(
+      '[Admin Deposit Email] Email accepted by Resend',
+      {
+        appointmentId,
+        emailId: emailResult.id,
+      }
+    );
 
     return res.status(200).json({
       success: true,
@@ -403,10 +650,26 @@ export default async function handler(req: any, res: any) {
       message:
         'Resend accepted the deposit payment email. Delivery is not yet confirmed.',
     });
+
   } catch (error: unknown) {
     console.error(
-      'Admin send deposit link error:',
-      error instanceof Error ? error.message : error
+      '[Admin Deposit Email] Workflow failed',
+      {
+        appointmentId,
+        stage,
+        errorType:
+          error instanceof Error
+            ? error.name
+            : 'UnknownError',
+        databaseErrorCode:
+          error &&
+          typeof error === 'object' &&
+          'code' in error &&
+          typeof error.code === 'string' &&
+          /^[a-zA-Z0-9_-]{1,40}$/.test(error.code)
+            ? error.code
+            : undefined,
+      }
     );
 
     return res.status(500).json({
