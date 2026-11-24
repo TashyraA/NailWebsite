@@ -321,10 +321,17 @@ export default async function handler(
       });
     }
 
+    /* =========================================
+       PAYMENT EXCEPTION CHECK
+
+       Neon uses stripe_event_id, not id.
+       Preserve the payment exception safeguard.
+    ========================================= */
+
     logStage('payment_exception_lookup');
 
     const reviewRows = await sql`
-      SELECT id
+      SELECT stripe_event_id
       FROM public.salon_stripe_payment_events
       WHERE appointment_id = ${appointmentId}::uuid
         AND processing_status = 'needs_review'
