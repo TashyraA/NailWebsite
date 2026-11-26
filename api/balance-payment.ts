@@ -464,7 +464,7 @@ export default async function handler(
     'Content-Security-Policy',
     "default-src 'none'; " +
     "style-src 'unsafe-inline'; " +
-    "form-action 'self'; " +
+    "form-action 'self' https://checkout.stripe.com; " +
     "base-uri 'none'; " +
     "frame-ancestors 'none';"
   );
