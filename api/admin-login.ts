@@ -6,6 +6,7 @@ import {
   timingSafeEqual,
 } from 'node:crypto';
 
+import { isIP } from 'node:net';
 import { neon } from '@neondatabase/serverless';
 import { isSameOriginRequest } from './_admin-auth.js';
 
@@ -149,29 +150,43 @@ export default async function handler(
 
     const sql = neon(databaseUrl);
 
-    const ipHeader = req.headers['x-forwarded-for'];
+    const ipHeader = process.env.NODE_ENV === 'production'
+      ? req.headers?.['x-vercel-forwarded-for']
+      : req.socket?.remoteAddress;
 
-    const ip =
-      typeof ipHeader === 'string'
-        ? ipHeader.split(',')[0].trim()
-        : 'unknown';
+    const ip = typeof ipHeader === 'string'
+      ? ipHeader.trim()
+      : '';
+
+    if (!isIP(ip) || ip.includes('%')) {
+      return res.status(503).json({
+        success: false,
+        error: 'Unable to process login',
+      });
+    }
+
+    // Normalize IPv6 representations before hashing.
+    const normalizedIp = isIP(ip) === 6
+      ? new URL(`http://[${ip}]/`).hostname.slice(1, -1)
+      : ip;
 
     const ipHash = createHmac('sha256', sessionSecret)
-      .update(ip)
+      .update(normalizedIp)
       .digest('hex');
 
     const attempts = await sql`
-      SELECT COUNT(*)::integer AS count
-      FROM admin_login_attempts
-      WHERE ip_hash = ${ipHash}
-        AND attempted_at > NOW() - INTERVAL '15 minutes'
+      SELECT public.reserve_admin_login_attempt(${ipHash}) AS allowed
     `;
 
-    if (Number(attempts[0]?.count || 0) >= 10) {
+    if (attempts[0]?.allowed === false) {
       return res.status(429).json({
         success: false,
         error: 'Too many login attempts. Try again later.',
       });
+    }
+
+    if (attempts[0]?.allowed !== true) {
+      throw new Error('Invalid login reservation response');
     }
 
     const emailMatches =
@@ -183,11 +198,6 @@ export default async function handler(
     );
 
     if (!emailMatches || !passwordMatches) {
-      await sql`
-        INSERT INTO admin_login_attempts (ip_hash)
-        VALUES (${ipHash})
-      `;
-
       return res.status(401).json({
         success: false,
         error: 'Invalid email or password',
