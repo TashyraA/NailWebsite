@@ -2,7 +2,18 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import { verifyBooking, appUrl } from './_booking.js';
 import { escapeHtml, sendEmail } from './_email.js';
-import { handleNeonDepositWebhook } from './_neon-deposit-webhook.js';
+
+import {
+  handleNeonDepositWebhook,
+} from './_neon-deposit-webhook.js';
+
+import {
+  handleNeonBalanceWebhook,
+} from './_neon-balance-webhook.js';
+
+import {
+  BALANCE_PAYMENT_TYPE,
+} from './_neon-balance-payment.js';
 
 /* =========================================
    INLOVENAILZ BY BRIANA
@@ -10,9 +21,12 @@ import { handleNeonDepositWebhook } from './_neon-deposit-webhook.js';
 
    - Verifies Stripe webhook signatures
    - Supports variable appointment deposits
+   - Supports Neon remaining balance payments
+   - Separates deposit and balance processing
    - Preserves legacy payment sessions
    - Sends payment notifications
    - Preserves appointment review links
+   - Preserves existing deposit functionality
 ========================================= */
 
 export const config = {
@@ -27,32 +41,26 @@ const TOLERANCE_SECONDS = 300;
    READ RAW WEBHOOK BODY
 ===================================== */
 
-const readRawBody = async (
-  req: any
-): Promise<string> => {
-  if (Buffer.isBuffer(req.rawBody)) {
-    return req.rawBody.toString('utf8');
-  }
+const MAX_WEBHOOK_BYTES = 1024 * 1024;
 
-  if (typeof req.rawBody === 'string') {
-    return req.rawBody;
-  }
+class WebhookBodyTooLarge extends Error {}
 
-  if (Buffer.isBuffer(req.body)) {
-    return req.body.toString('utf8');
+const readRawBody = async (req: any): Promise<Buffer> => {
+  const supplied = req.rawBody ?? req.body;
+  if (Buffer.isBuffer(supplied) || typeof supplied === 'string') {
+    const body = Buffer.isBuffer(supplied) ? supplied : Buffer.from(supplied, 'utf8');
+    if (body.length > MAX_WEBHOOK_BYTES) throw new WebhookBodyTooLarge();
+    return body;
   }
-
-  if (typeof req.body === 'string') {
-    return req.body;
-  }
-
   const chunks: Buffer[] = [];
-
+  let size = 0;
   for await (const chunk of req) {
-    chunks.push(Buffer.from(chunk));
+    const buffer = Buffer.from(chunk);
+    size += buffer.length;
+    if (size > MAX_WEBHOOK_BYTES) throw new WebhookBodyTooLarge();
+    chunks.push(buffer);
   }
-
-  return Buffer.concat(chunks).toString('utf8');
+  return Buffer.concat(chunks, size);
 };
 
 /* =====================================
@@ -60,7 +68,7 @@ const readRawBody = async (
 ===================================== */
 
 const verifyStripeSignature = (
-  payload: string,
+  payload: Buffer,
   header: string,
   secret: string
 ): boolean => {
@@ -94,7 +102,8 @@ const verifyStripeSignature = (
 
   const expected = Buffer.from(
     createHmac('sha256', secret)
-      .update(`${timestamp}.${payload}`)
+      .update(`${timestamp}.`, 'utf8')
+      .update(payload)
       .digest('hex'),
     'hex'
   );
@@ -115,6 +124,11 @@ const verifyStripeSignature = (
 
 /* =====================================
    READ SIGNED BOOKING TOKEN
+
+   Legacy Stripe payment sessions only.
+
+   Neon deposit and balance payments
+   use their own database-backed handlers.
 ===================================== */
 
 const readBookingToken = (
@@ -157,6 +171,8 @@ export default async function handler(
   req: any,
   res: any
 ) {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
   if (req.method !== 'POST') {
     return res.status(405).json({
       error: 'Method not allowed',
@@ -164,21 +180,27 @@ export default async function handler(
   }
 
   try {
+    /* =====================================
+       VERIFY WEBHOOK CONFIGURATION
+    ===================================== */
+
     const webhookSecret =
       process.env.STRIPE_WEBHOOK_SECRET;
 
     const signature =
       req.headers['stripe-signature'];
 
-    if (
-      !webhookSecret ||
-      typeof signature !== 'string'
-    ) {
-      return res.status(400).json({
-        error:
-          'Missing webhook configuration or signature',
-      });
+    const stripeKey = process.env.STRIPE_SECRET_KEY?.trim();
+    if (!webhookSecret || !stripeKey || !/^(sk|rk)_live_[A-Za-z0-9]+$/.test(stripeKey)) {
+      return res.status(500).json({ error: 'Webhook configuration unavailable' });
     }
+    if (typeof signature !== 'string' || signature.length > 8192) {
+      return res.status(400).json({ error: 'Missing or invalid Stripe signature' });
+    }
+
+    /* =====================================
+       VERIFY STRIPE WEBHOOK SIGNATURE
+    ===================================== */
 
     const raw = await readRawBody(req);
 
@@ -194,19 +216,104 @@ export default async function handler(
       });
     }
 
-    const event = JSON.parse(raw);
+    /* =====================================
+       READ VERIFIED STRIPE EVENT
+    ===================================== */
 
-    if (event.type !== 'checkout.session.completed') {
+    let event: any;
+    try {
+      event = JSON.parse(raw.toString('utf8'));
+    } catch {
+      return res.status(400).json({ error: 'Invalid webhook JSON' });
+    }
+    if (!event || typeof event !== 'object' || typeof event.type !== 'string') {
+      return res.status(400).json({ error: 'Invalid Stripe event' });
+    }
+    if (event.livemode === false) {
+      return res.status(200).json({ received: true, ignored: 'Test-mode event' });
+    }
+    if (event.livemode !== true) {
+      return res.status(400).json({ error: 'Missing Stripe event mode' });
+    }
+
+    if (
+      event.type !==
+        'checkout.session.completed'
+    ) {
       return res.status(200).json({
         received: true,
       });
     }
 
     const session = event.data?.object;
+    if (!session || typeof session.id !== 'string' ||
+        !/^cs_live_[A-Za-z0-9]+$/.test(session.id) || session.livemode !== true) {
+      return res.status(400).json({ error: 'Invalid LIVE Checkout Session' });
+    }
 
     const metadata = (
       session?.metadata || {}
     ) as Record<string, string>;
+
+    const paymentType =
+      metadata.payment_type;
+
+    /* =====================================
+       NEON APPOINTMENT BALANCE PAYMENTS
+
+       Route directly to the dedicated
+       balance payment handler.
+
+       The handler independently verifies
+       payment status, currency, amount,
+       Stripe resources, and appointment
+       eligibility.
+
+       It records payment exceptions and
+       confirms valid balance payments
+       atomically in Neon.
+
+       Never process these payments using
+       the legacy signed booking token.
+    ===================================== */
+
+    if (
+      paymentType === BALANCE_PAYMENT_TYPE
+    ) {
+      const result =
+        await handleNeonBalanceWebhook(
+          event
+        );
+
+      return res.status(200).json(result);
+    }
+
+    /* =====================================
+       NEON APPOINTMENT DEPOSITS
+
+       Preserve the existing verified
+       Neon deposit payment workflow.
+    ===================================== */
+
+    if (
+      paymentType ===
+        'neon_appointment_deposit'
+    ) {
+      const result =
+        await handleNeonDepositWebhook(
+          event
+        );
+
+      return res.status(200).json(result);
+    }
+
+    /* =====================================
+       VERIFY EXISTING PAYMENT TYPES
+
+       Preserve the existing eligibility
+       checks for deposit and legacy
+       payment sessions.
+    ===================================== */
 
     if (
       session?.mode !== 'payment' ||
@@ -219,19 +326,9 @@ export default async function handler(
       });
     }
 
-    const paymentType = metadata.payment_type;
-
-        /* =====================================
-       NEW NEON APPOINTMENT DEPOSITS
+    /* =====================================
+       LEGACY PAYMENT TYPES
     ===================================== */
-
-    if (paymentType === 'neon_appointment_deposit') {
-      const result = await handleNeonDepositWebhook(
-        event
-      );
-
-      return res.status(200).json(result);
-    }
 
     if (
       paymentType !== 'deposit' &&
@@ -271,7 +368,9 @@ export default async function handler(
       //
       // Future custom-deposit sessions should also
       // sign the selected deposit amount.
-      const expectedDeposit = booking.depositPaid;
+
+      const expectedDeposit =
+        booking.depositPaid;
 
       if (
         typeof expectedDeposit !== 'number' ||
@@ -315,7 +414,10 @@ export default async function handler(
     }
 
     /* =====================================
-       DEPOSIT PAYMENT
+       LEGACY DEPOSIT PAYMENT
+
+       Preserve the original appointment
+       review and email workflow.
     ===================================== */
 
     if (paymentType === 'deposit') {
@@ -443,7 +545,10 @@ export default async function handler(
       );
     } else {
       /* =====================================
-         REMAINING BALANCE PAYMENT
+         LEGACY REMAINING BALANCE PAYMENT
+
+         Preserve compatibility with
+         previously issued payment links.
       ===================================== */
 
       await sendEmail(
@@ -486,14 +591,21 @@ export default async function handler(
       );
     }
 
+    /* =====================================
+       SUCCESSFUL WEBHOOK RESPONSE
+    ===================================== */
+
     return res.status(200).json({
       received: true,
     });
+
   } catch (error: unknown) {
-    console.error(
-      'Stripe webhook error:',
-      error
-    );
+    if (error instanceof WebhookBodyTooLarge) {
+      return res.status(413).json({ error: 'Webhook body too large' });
+    }
+    console.error('Stripe webhook processing failed', {
+      errorType: error instanceof Error ? error.name : 'Unknown error',
+    });
 
     return res.status(500).json({
       error: 'Webhook processing failed',

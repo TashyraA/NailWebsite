@@ -10,7 +10,9 @@ function readCookie(
   cookieHeader: string,
   cookieName: string
 ): string | null {
+  if (cookieHeader.length > 16384) return null;
   const cookies = cookieHeader.split(';');
+  let found: string | null = null;
 
   for (const cookie of cookies) {
     const separator = cookie.indexOf('=');
@@ -24,19 +26,21 @@ function readCookie(
     const value = cookie.slice(separator + 1).trim();
 
     try {
-      return decodeURIComponent(value);
+      if (found !== null) return null;
+      found = decodeURIComponent(value);
     } catch {
       return null;
     }
   }
 
-  return null;
+  return found;
 }
 
 function verifySessionToken(
   token: string,
   secret: string
 ): boolean {
+  if (token.length > 160) return false;
   const parts = token.split('.');
 
   if (parts.length !== 4) {
@@ -115,7 +119,7 @@ export function isAdminRequest(
 ): boolean {
   const secret = process.env.ADMIN_SESSION_SECRET;
 
-  if (!secret) {
+  if (!secret || Buffer.byteLength(secret, 'utf8') < 32 || !secret.trim()) {
     return false;
   }
 
@@ -158,7 +162,13 @@ export function isSameOriginRequest(
   try {
     const originUrl = new URL(origin);
 
-    if (originUrl.host !== host) {
+    if (
+      originUrl.origin !== origin ||
+      originUrl.username || originUrl.password ||
+      originUrl.host !== host ||
+      (req.headers?.['sec-fetch-site'] !== undefined &&
+        req.headers['sec-fetch-site'] !== 'same-origin')
+    ) {
       return false;
     }
 
@@ -184,10 +194,14 @@ export function requireAdmin(
   res: any,
   requireSameOrigin = false
 ): boolean {
-  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Cache-Control', 'no-store, private');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+
+  const method = String(req.method ?? '').toUpperCase();
+  const modifying = !['GET', 'HEAD', 'OPTIONS'].includes(method);
 
   if (
-    requireSameOrigin &&
+    (requireSameOrigin || modifying) &&
     !isSameOriginRequest(req)
   ) {
     res.status(403).json({

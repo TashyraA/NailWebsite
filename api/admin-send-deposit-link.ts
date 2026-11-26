@@ -35,9 +35,11 @@ type Appointment = {
   stripe_checkout_session_id: string | null;
   stripe_payment_intent_id: string | null;
   deposit_checkout_claim_id: string | null;
+  deposit_checkout_claim_expires_at: string | null;
 };
 
 type StripeSession = {
+  livemode?: boolean;
   id?: string;
   url?: string | null;
   mode?: string;
@@ -66,6 +68,7 @@ type ProcessingStage =
   | 'stripe_session_lookup'
   | 'stripe_session_validation'
   | 'email_preparation'
+  | 'final_appointment_check'
   | 'resend_request'
   | 'resend_response'
   | 'complete';
@@ -96,6 +99,7 @@ function money(cents: number): string {
 function validEmail(value: unknown): boolean {
   return (
     typeof value === 'string' &&
+    value.trim().length <= 254 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
       value.trim()
     )
@@ -117,7 +121,8 @@ function validCheckoutUrl(
       url.hostname === 'checkout.stripe.com' &&
       !url.username &&
       !url.password &&
-      !url.port
+      !url.port &&
+      url.pathname.startsWith('/c/pay/')
     );
   } catch {
     return false;
@@ -156,7 +161,7 @@ export default async function handler(
     missingConfiguration.push('DATABASE_URL');
   }
 
-  if (!stripeKey?.trim()) {
+  if (!stripeKey || !/^(?:sk|rk)_live_[A-Za-z0-9]+$/.test(stripeKey.trim())) {
     missingConfiguration.push('STRIPE_SECRET_KEY');
   }
 
@@ -180,7 +185,9 @@ export default async function handler(
     });
   }
 
-  const appointmentId = req.body?.appointmentId;
+  const rawAppointmentId = req.body?.appointmentId;
+  const appointmentId = typeof rawAppointmentId === 'string'
+    ? rawAppointmentId.toLowerCase() : rawAppointmentId;
 
   if (
     typeof appointmentId !== 'string' ||
@@ -224,7 +231,8 @@ export default async function handler(
         deposit_expires_at,
         stripe_checkout_session_id,
         stripe_payment_intent_id,
-        deposit_checkout_claim_id
+        deposit_checkout_claim_id,
+        deposit_checkout_claim_expires_at
       FROM public.appointment_requests
       WHERE id = ${appointmentId}::uuid
       LIMIT 1
@@ -253,7 +261,8 @@ export default async function handler(
     }
 
     if (
-      appointment.deposit_checkout_claim_id !== null
+      appointment.deposit_checkout_claim_id !== null ||
+      appointment.deposit_checkout_claim_expires_at !== null
     ) {
       return res.status(409).json({
         success: false,
@@ -264,9 +273,7 @@ export default async function handler(
 
     if (
       !appointment.stripe_checkout_session_id ||
-      !appointment.stripe_checkout_session_id.startsWith(
-        'cs_'
-      )
+      !/^cs_live_[A-Za-z0-9]+$/.test(appointment.stripe_checkout_session_id)
     ) {
       return res.status(409).json({
         success: false,
@@ -287,6 +294,7 @@ export default async function handler(
       !Number.isSafeInteger(depositCents) ||
       !Number.isSafeInteger(totalCents) ||
       depositCents < 50 ||
+      depositCents > 99_999_999 ||
       depositCents > totalCents
     ) {
       return res.status(409).json({
@@ -360,6 +368,7 @@ export default async function handler(
         headers: {
           Authorization: `Bearer ${stripeKey!.trim()}`,
         },
+        redirect: 'error',
         signal: AbortSignal.timeout(15000),
       }
     );
@@ -392,6 +401,10 @@ export default async function handler(
     );
 
     const validationFailures: string[] = [];
+
+    if (session.livemode !== true) {
+      validationFailures.push('session_not_live');
+    }
 
     if (session.id !== sessionId) {
       validationFailures.push('session_id_mismatch');
@@ -573,6 +586,40 @@ export default async function handler(
       </div>
     `;
 
+    logStage('final_appointment_check');
+
+    const currentRows = await sql`
+      SELECT id FROM public.appointment_requests
+      WHERE id = ${appointmentId}::uuid
+        AND status = 'awaiting_deposit'
+        AND deposit_paid_at IS NULL
+        AND stripe_payment_intent_id IS NULL
+        AND deposit_checkout_claim_id IS NULL
+        AND deposit_checkout_claim_expires_at IS NULL
+        AND stripe_checkout_session_id = ${sessionId}
+        AND total_price = ${totalCents / 100}
+        AND deposit_amount = ${depositCents / 100}
+        AND customer_name IS NOT DISTINCT FROM ${appointment.customer_name}
+        AND customer_email = ${appointment.customer_email}
+        AND appointment_date::text = ${appointment.appointment_date}
+        AND appointment_time::text = ${String(appointment.appointment_time)}
+        AND deposit_expires_at > NOW()
+        AND deposit_expires_at >= to_timestamp(${session.expires_at})
+        AND NOT EXISTS (
+          SELECT 1 FROM public.salon_stripe_payment_events
+          WHERE appointment_id = ${appointmentId}::uuid
+            AND processing_status = 'needs_review'
+        )
+      LIMIT 1
+    `;
+
+    if (!currentRows.length || session.expires_at! <= Math.floor(Date.now() / 1000)) {
+      return res.status(409).json({
+        success: false,
+        error: 'Appointment or checkout state changed. Review before emailing.',
+      });
+    }
+
     logStage('resend_request');
 
     const resendResponse = await fetch(
@@ -592,6 +639,7 @@ export default async function handler(
             'InLoveNailz | Pay Your Appointment Deposit',
           html,
         }),
+        redirect: 'error',
         signal: AbortSignal.timeout(15000),
       }
     );
@@ -620,7 +668,7 @@ export default async function handler(
     if (
       !resendResponse.ok ||
       typeof emailResult.id !== 'string' ||
-      !emailResult.id
+      !emailResult.id.trim()
     ) {
       console.error(
         '[Admin Deposit Email] Resend acceptance failed',

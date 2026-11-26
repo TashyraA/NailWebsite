@@ -5,7 +5,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 
-import { getAppointments } from '@/services/appointmentService';
+import { getAppointments, type AdminAppointment } from '@/services/appointmentService';
 import AdminLayout from '@/components/admin/AdminLayout';
 import { Card } from '@/components/ui/card';
 
@@ -56,6 +56,8 @@ type ApiResponse = {
   error?: string;
   checkoutUrl?: string;
   emailAccepted?: boolean;
+  customerEmailAccepted?: boolean;
+  businessEmailAccepted?: boolean;
 };
 
 type CancellationRequest = {
@@ -140,6 +142,7 @@ const parseDeposit = (value: string): number | null => {
   if (
     !Number.isFinite(amount) ||
     amount < 0.5 ||
+    amount > 999999.99 ||
     !Number.isSafeInteger(Math.round(amount * 100))
   ) {
     return null;
@@ -229,6 +232,31 @@ async function sendDepositPaymentLink(
   );
 }
 
+function paymentBlocked(appointment: AdminAppointment): boolean {
+  return appointment.paymentNeedsReview !== false ||
+    appointment.hasPaymentException !== false ||
+    appointment.paymentState === 'needs_review' ||
+    appointment.depositCheckoutInProgress !== false ||
+    appointment.balanceCheckoutInProgress !== false;
+}
+
+function canSendBalanceEmail(appointment: AdminAppointment): boolean {
+  const email = appointment.customerEmail?.trim() || '';
+  return appointment.status === 'confirmed' &&
+    !paymentBlocked(appointment) &&
+    appointment.canPayBalanceOnline === true &&
+    appointment.hasPaidDeposit === true &&
+    appointment.hasPaidBalance === false &&
+    appointment.paymentState === 'partially_paid' &&
+    [appointment.totalPrice, appointment.depositPaid, appointment.balancePaid,
+      appointment.totalPaid, appointment.balanceDue].every(value =>
+        Number.isFinite(value) && value >= 0) &&
+    appointment.balancePaid === 0 &&
+    appointment.balanceDue >= 0.5 &&
+    appointment.balanceDue <= 999999.99 &&
+    email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 const AdminAppointments = () => {
   const queryClient = useQueryClient();
 
@@ -252,6 +280,13 @@ const AdminAppointments = () => {
 
   const [emailAccepted, setEmailAccepted] =
     React.useState<Record<string, boolean>>({});
+
+  const [balanceEmailAccepted, setBalanceEmailAccepted] =
+    React.useState<Record<string, boolean>>({});
+  const [balanceEmailErrors, setBalanceEmailErrors] =
+    React.useState<Record<string, string>>({});
+  const [balanceSendingId, setBalanceSendingId] =
+    React.useState<string | null>(null);
 
   const [processingId, setProcessingId] =
     React.useState<string | null>(null);
@@ -428,6 +463,12 @@ const AdminAppointments = () => {
 
     clearDecisionMessages(appointmentId);
 
+    const current = appointments.find(item => item.id === appointmentId);
+    if (!current || current.status !== 'pending' || paymentBlocked(current)) {
+      setDecisionErrors(previous => ({ ...previous, [appointmentId]: 'Refresh and review payment activity before proceeding.' }));
+      return;
+    }
+
     let depositAmount: number | undefined;
 
     if (action === 'approve') {
@@ -442,7 +483,7 @@ const AdminAppointments = () => {
         setDecisionErrors(previous => ({
           ...previous,
           [appointmentId]:
-            'Enter a valid deposit of at least $0.50 and no more than the service total.',
+            'Enter a valid deposit of at least $0.50 and no more than the service total or $999,999.99, whichever is lower.',
         }));
 
         return;
@@ -459,7 +500,7 @@ const AdminAppointments = () => {
       if (!confirmed) return;
     } else {
       const confirmed = window.confirm(
-        `Decline the appointment request for ${customerName}?\n\nThis will change the request status to Declined. This action cannot be undone from this page.\n\nNo automatic customer email will be sent.`
+        `Decline the appointment request for ${customerName}?\n\nThis will change the request status to Declined. This action cannot be undone from this page.\n\nAfter declining, the system will attempt to email the customer. Email delivery is not guaranteed.`
       );
 
       if (!confirmed) return;
@@ -477,14 +518,26 @@ const AdminAppointments = () => {
           : {}),
       });
 
+      const message = action === 'decline'
+        ? result.customerEmailAccepted === true
+          ? 'Appointment declined. Resend accepted the customer email. Delivery is not confirmed.'
+          : 'Appointment declined. Customer email acceptance was not confirmed. Review Resend and follow up by email if needed. Do not repeat the decline.'
+        : result.message || 'Appointment approved and awaiting deposit.';
+
       setDecisionSuccess(previous => ({
         ...previous,
-        [appointmentId]:
-          result.message ||
-          'Appointment updated successfully.',
+        [appointmentId]: message,
       }));
+      setStatusFilter('all');
 
-      await refreshAppointments();
+      try {
+        await refreshAppointments();
+      } catch {
+        setDecisionSuccess(previous => ({
+          ...previous,
+          [appointmentId]: `${message} Refresh the appointment list to see the latest status.`,
+        }));
+      }
     } catch (caughtError) {
       setDecisionErrors(previous => ({
         ...previous,
@@ -519,6 +572,7 @@ const AdminAppointments = () => {
     if (
       !appointment ||
       appointment.status !== 'awaiting_deposit' ||
+      paymentBlocked(appointment) ||
       Boolean(appointment.depositPaidAt) ||
       Number(appointment.depositPaid || 0) > 0
     ) {
@@ -644,6 +698,45 @@ const AdminAppointments = () => {
     }
   };
 
+  const handleSendBalanceLink = async (appointmentId: string) => {
+    if (actionLock.current || processingId || cancellingId === appointmentId ||
+        balanceEmailAccepted[appointmentId] || balanceEmailErrors[appointmentId]) return;
+
+    const current = appointments.find(item => item.id === appointmentId);
+    if (!current || !canSendBalanceEmail(current)) {
+      setBalanceEmailErrors(previous => ({ ...previous, [appointmentId]:
+        'This appointment is not eligible for a balance payment email. Refresh and review its payment records.' }));
+      return;
+    }
+
+    if (!window.confirm(
+      `Email a secure remaining balance link to ${current.customerName || 'this customer'}?\n\nRemaining balance: ${currency(current.balanceDue)}\nEmail: ${current.customerEmail}\n\nThis sends an email only. It does not create a checkout or charge the customer. Continue?`
+    )) return;
+
+    actionLock.current = true;
+    setProcessingId(appointmentId);
+    setBalanceSendingId(appointmentId);
+    try {
+      const result = await postAdminAction('/api/admin-send-balance-link', { appointmentId });
+      if (result.emailAccepted !== true) {
+        throw new Error('Email acceptance could not be verified.');
+      }
+      setBalanceEmailAccepted(previous => ({ ...previous, [appointmentId]: true }));
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : 'Unable to verify email acceptance.';
+      setBalanceEmailErrors(previous => ({ ...previous, [appointmentId]:
+        `${message} Review the appointment and Resend before retrying. Refresh the page only after reviewing the outcome.` }));
+    } finally {
+      try {
+        await refreshAppointments();
+      } finally {
+        actionLock.current = false;
+        setProcessingId(null);
+        setBalanceSendingId(null);
+      }
+    }
+  };
+
   const openCancellation = (
     appointmentId: string
   ) => {
@@ -667,12 +760,17 @@ const AdminAppointments = () => {
     customerName: string,
     appointmentDate: string,
     appointmentTime: string,
-    hasPaidDeposit: boolean
+    hasRecordedPayment: boolean
   ) => {
     if (actionLock.current || processingId) return;
 
     clearDecisionMessages(appointmentId);
 
+    const current = appointments.find(item => item.id === appointmentId);
+    if (!current || paymentBlocked(current) || !['confirmed', 'awaiting_deposit'].includes(current.status)) {
+      setDecisionErrors(previous => ({ ...previous, [appointmentId]: 'Refresh and review payment activity before cancelling.' }));
+      return;
+    }
     const reason = cancellationReason.trim();
 
     if (reason.length < 3 || reason.length > 1000) {
@@ -685,8 +783,8 @@ const AdminAppointments = () => {
       return;
     }
 
-    const paymentWarning = hasPaidDeposit
-      ? '\n\nWARNING: This appointment has a recorded deposit payment. Cancelling will NOT automatically refund the customer. You must review and handle any refund separately.'
+    const paymentWarning = hasRecordedPayment || current.totalPaid > 0
+      ? '\n\nWARNING: This appointment has recorded appointment payments. Cancelling will NOT automatically refund the customer. You must review and handle any refund separately.'
       : '\n\nNo automatic refund will be issued.';
 
     const confirmed = window.confirm(
@@ -694,7 +792,7 @@ const AdminAppointments = () => {
         appointmentDate
       )}\nTime: ${formatAppointmentTime(
         appointmentTime
-      )}\n\nReason: ${reason}\n\nThis will release the reserved appointment time.${paymentWarning}\n\nNo automatic cancellation email will be sent to the customer.\n\nContinue?`
+      )}\n\nReason: ${reason}\n\nThis will release the reserved appointment time.${paymentWarning}\n\nAfter cancellation, the system will attempt to email the customer and the business. Email delivery is not guaranteed.\n\nContinue?`
     );
 
     if (!confirmed) return;
@@ -709,17 +807,28 @@ const AdminAppointments = () => {
           reason,
         });
 
+      const customerAccepted = result.customerEmailAccepted === true;
+      const businessAccepted = result.businessEmailAccepted === true;
+      const notificationWarning = !customerAccepted || !businessAccepted
+        ? ' Review Resend and follow up manually for any unconfirmed email. Do not repeat the cancellation.'
+        : '';
       setDecisionSuccess(previous => ({
         ...previous,
-        [appointmentId]:
-          result.message ||
-          'Appointment cancelled successfully.',
+        [appointmentId]: `Appointment cancelled successfully. Customer email: ${customerAccepted ? 'accepted by Resend' : 'acceptance not confirmed'}. Business email: ${businessAccepted ? 'accepted by Resend' : 'acceptance not confirmed'}. Delivery is not confirmed. No automatic refund was issued.` + notificationWarning,
       }));
 
       setCancellingId(null);
       setCancellationReason('');
+      setStatusFilter('all');
 
-      await refreshAppointments();
+      try {
+        await refreshAppointments();
+      } catch {
+        setDecisionSuccess(previous => ({
+          ...previous,
+          [appointmentId]: `${previous[appointmentId]} Refresh the appointment list to see the latest status.`,
+        }));
+      }
     } catch (caughtError) {
       setDecisionErrors(previous => ({
         ...previous,
@@ -920,21 +1029,19 @@ const AdminAppointments = () => {
                 appointment.depositAmount || 0
               );
 
-              const depositPaid =
-                appointment.depositPaidAt
-                  ? Number(
-                      appointment.depositPaid || 0
-                    )
-                  : 0;
-
-              const balanceDue = Math.max(
-                0,
-                totalPrice - depositPaid
-              );
-
-              const hasPaidDeposit =
-                Boolean(appointment.depositPaidAt) &&
-                depositPaid > 0;
+              const depositPaid = appointment.depositPaid;
+              const balancePaid = appointment.balancePaid;
+              const totalPaid = appointment.totalPaid;
+              const balanceDue = appointment.balanceDue;
+              const needsReview = appointment.paymentNeedsReview !== false ||
+                appointment.hasPaymentException !== false ||
+                !['unpaid', 'partially_paid', 'paid_in_full'].includes(appointment.paymentState) ||
+                ![totalPrice, depositPaid, balancePaid, totalPaid, balanceDue].every(value => Number.isFinite(value) && value >= 0);
+              const blocked = paymentBlocked(appointment) || needsReview;
+              const hasRecordedPayment = appointment.hasPaidDeposit || appointment.hasPaidBalance || totalPaid > 0;
+              const paidInFull = !needsReview && appointment.paymentState === 'paid_in_full';
+              const paidPercent = totalPrice > 0 && !needsReview ? Math.min(100, Math.max(0, Math.floor(totalPaid / totalPrice * 100))) : 0;
+              const paymentLabel = needsReview ? 'Needs review' : paidInFull ? 'Paid in full' : appointment.paymentState === 'partially_paid' ? 'Partially paid' : 'Unpaid';
 
               const services = Array.isArray(
                 appointment.services
@@ -951,14 +1058,15 @@ const AdminAppointments = () => {
 
               const canSendDepositLink =
                 isAwaitingDeposit &&
+                !blocked &&
                 !appointment.depositPaidAt &&
                 Number(
                   appointment.depositPaid || 0
                 ) === 0;
 
               const canCancel =
-                isAwaitingDeposit ||
-                appointment.status === 'confirmed';
+                !blocked && (isAwaitingDeposit ||
+                appointment.status === 'confirmed');
 
               const isCancellationOpen =
                 cancellingId === appointment.id;
@@ -969,7 +1077,7 @@ const AdminAppointments = () => {
               const isSending =
                 sendingId === appointment.id;
 
-              const isBusy = processingId !== null;
+              const isBusy = processingId !== null || blocked;
 
               const depositInput =
                 depositInputs[appointment.id] ?? '';
@@ -1253,88 +1361,42 @@ const AdminAppointments = () => {
                         </div>
 
                         <div className="space-y-4 p-5">
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-xs text-[#786A72]">
-                              Service Total
-                            </span>
-
-                            <span className="text-[13px] font-semibold text-[#29252B]">
-                              {currency(totalPrice)}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-xs text-[#786A72]">
-                              Deposit Requested
-                            </span>
-
-                            <span className="text-[13px] font-semibold text-[#29252B]">
-                              {appointment.depositAmount !=
-                              null
-                                ? currency(
-                                    appointment.depositAmount
-                                  )
-                                : 'Not Set'}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-xs text-[#786A72]">
-                              Deposit Paid
-                            </span>
-
-                            <span className="text-[13px] font-semibold text-[#397A53]">
-                              {currency(depositPaid)}
-                            </span>
-                          </div>
-
-                          <div className="border-t border-[#EBCBD6] pt-4">
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="text-xs font-semibold text-[#29252B]">
-                                Remaining Balance
-                              </span>
-
-                              <span className="font-heading text-[25px] font-semibold text-[#963F60]">
-                                {currency(balanceDue)}
-                              </span>
+                          <p className={`text-xs font-semibold ${needsReview ? 'text-[#91641E]' : paidInFull ? 'text-[#397A53]' : 'text-[#963F60]'}`}>{paymentLabel}</p>
+                          {[
+                            ['Service Total', currency(totalPrice)],
+                            ['Deposit Requested', appointment.depositAmount == null ? 'Not Set' : currency(depositAmount)],
+                            ['Deposit Paid', needsReview ? 'Review required' : currency(depositPaid)],
+                            ['Balance Paid', needsReview ? 'Review required' : currency(balancePaid)],
+                            ['Total Collected', needsReview ? 'Review required' : currency(totalPaid)],
+                          ].map(([label, value]) => (
+                            <div key={label} className="flex items-center justify-between gap-3">
+                              <span className="text-xs text-[#786A72]">{label}</span>
+                              <span className="text-[13px] font-semibold text-[#29252B]">{value}</span>
                             </div>
+                          ))}
+                          <div className="border-t border-[#EBCBD6] pt-4">
+                            <p className="text-xs font-semibold text-[#29252B]">{appointment.status === 'cancelled' ? 'Historical Unpaid Amount' : 'Remaining Balance'}</p>
+                            <p className={`mt-1 font-heading text-[25px] font-semibold ${paidInFull ? 'text-[#397A53]' : 'text-[#963F60]'}`}>{needsReview ? 'Review required' : currency(balanceDue)}</p>
                           </div>
-
-                          <div
-                            className={`flex items-start gap-2 rounded-lg p-3 ${
-                              hasPaidDeposit
-                                ? 'bg-[#EFF9F2]'
-                                : 'bg-white'
-                            }`}
-                          >
-                            {hasPaidDeposit ? (
-                              <CheckCircle2
-                                size={17}
-                                className="mt-0.5 shrink-0 text-[#397A53]"
-                              />
-                            ) : (
-                              <Clock3
-                                size={17}
-                                className="mt-0.5 shrink-0 text-[#963F60]"
-                              />
-                            )}
-
-                            <p
-                              className={`text-[11px] leading-5 ${
-                                hasPaidDeposit
-                                  ? 'text-[#397A53]'
-                                  : 'text-[#786A72]'
-                              }`}
-                            >
-                              {hasPaidDeposit
-                                ? 'Deposit payment recorded.'
-                                : isAwaitingDeposit
-                                  ? wasEmailAccepted
-                                    ? 'Payment email accepted by the email provider. Awaiting customer payment.'
-                                    : 'Awaiting deposit. Use the deposit payment controls below to create or reuse a checkout and send the payment link.'
-                                  : 'No deposit payment has been recorded.'}
-                            </p>
+                          {!needsReview && totalPrice > 0 && (
+                            <div>
+                              <div role="progressbar" aria-label="Recorded payment progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={paidPercent} className="h-2 overflow-hidden rounded-full bg-[#EBCBD6]">
+                                <div className={`h-full rounded-full ${paidInFull ? 'bg-[#397A53]' : 'bg-[#963F60]'}`} style={{ width: `${paidPercent}%` }} />
+                              </div>
+                              <p className="mt-2 text-[11px] text-[#786A72]">{paidPercent}% recorded as paid</p>
+                            </div>
+                          )}
+                          <div className="rounded-lg bg-white p-3 text-[11px] leading-5 text-[#786A72]">
+                            {needsReview ? 'Payment records require reconciliation before further actions.' : appointment.status === 'cancelled' ? 'Historical payment records only. No balance should be collected for a cancelled appointment.' : paidInFull ? 'Full payment recorded.' : blocked ? 'Checkout activity requires review before further actions.' : appointment.canPayBalanceOnline ? 'Remaining balance is eligible for online payment. Email delivery is not verified here.' : appointment.hasPaidDeposit ? 'Deposit recorded. Contact the customer if the balance cannot be paid online.' : isAwaitingDeposit ? wasEmailAccepted ? 'Payment email accepted. Awaiting customer payment.' : 'Awaiting deposit. Use the deposit payment controls below.' : 'No deposit payment recorded.'}
                           </div>
+                          {blocked && (
+                            <div role="alert" className="rounded-lg border border-[#EBCF9D] bg-[#FFF8E9] p-3 text-xs text-[#91641E]">
+                              <strong>Payment actions paused.</strong> {appointment.paymentReviewReason || 'Refresh and review Stripe and appointment records before proceeding.'}
+                            </div>
+                          )}
+                          {appointment.refundRequiredReview && (
+                            <div role="alert" className="rounded-lg border border-[#EBCF9D] bg-[#FFF8E9] p-3 text-xs text-[#91641E]">Refund review required. Check Stripe for any deposit or balance refunds already issued. No automatic refund is performed.</div>
+                          )}
                         </div>
                       </div>
 
@@ -1416,7 +1478,7 @@ const AdminAppointments = () => {
                             id={`deposit-${appointment.id}`}
                             type="number"
                             min="0.50"
-                            max={totalPrice}
+                            max={Math.min(totalPrice, 999999.99)}
                             step="0.01"
                             inputMode="decimal"
                             placeholder="Enter deposit amount"
@@ -1746,6 +1808,57 @@ const AdminAppointments = () => {
                     </div>
                   )}
 
+                  {/* REMAINING BALANCE EMAIL CONTROLS */}
+
+                  {(canSendBalanceEmail(appointment) || balanceSendingId === appointment.id ||
+                    balanceEmailAccepted[appointment.id] || balanceEmailErrors[appointment.id]) && (
+                    <div className="border-t border-[#EBCBD6] bg-[#FFF7F8] px-5 py-6 sm:px-6">
+                      <div className="mb-5 flex items-start gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-[#963F60]">
+                          <Mail size={21} />
+                        </div>
+                        <div>
+                          <h4 className="font-heading text-[25px] text-[#29252B]">Remaining Balance Payment</h4>
+                          <p className="mt-1 max-w-xl text-[12px] leading-5 text-[#786A72]">
+                            Email the customer a secure link to review and pay their remaining balance. No checkout or charge is created by sending this email.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="rounded-xl border border-[#EBCBD6] bg-white p-4">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#96858E]">Remaining Balance</p>
+                          <p className="mt-2 font-heading text-[28px] font-semibold text-[#963F60]">{needsReview ? 'Review required' : currency(balanceDue)}</p>
+                        </div>
+                        <div className="rounded-xl border border-[#EBCBD6] bg-white p-4">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#96858E]">Payment Email Recipient</p>
+                          <p className="mt-2 break-all text-[13px] font-semibold text-[#29252B]">{appointment.customerEmail || 'No email address available'}</p>
+                        </div>
+                      </div>
+                      {balanceEmailAccepted[appointment.id] && (
+                        <div role="status" className={successClass}>
+                          <strong>Remaining balance email accepted</strong>
+                          <p className="mt-1">Resend accepted the email. Delivery is not yet confirmed. This notice is retained for the current page session.</p>
+                        </div>
+                      )}
+                      {balanceEmailErrors[appointment.id] && (
+                        <div role="alert" className={errorClass}>{balanceEmailErrors[appointment.id]}</div>
+                      )}
+                      <button
+                        type="button"
+                        disabled={isBusy || isCancellationOpen || !canSendBalanceEmail(appointment) ||
+                          Boolean(balanceEmailAccepted[appointment.id]) || Boolean(balanceEmailErrors[appointment.id])}
+                        onClick={() => handleSendBalanceLink(appointment.id)}
+                        className={`${primaryButtonClass} mt-5`}
+                      >
+                        {balanceSendingId === appointment.id ? <Loader2 size={17} className="animate-spin" /> :
+                          balanceEmailAccepted[appointment.id] ? <CheckCircle2 size={17} /> : <Mail size={17} />}
+                        {balanceSendingId === appointment.id ? 'Sending Balance Email...' :
+                          balanceEmailAccepted[appointment.id] ? 'Balance Email Accepted' : 'Send Remaining Balance Link'}
+                      </button>
+                      <p className="mt-3 text-[11px] leading-5 text-[#96858E]">The server verifies the current payment records before sending. If an error occurs, review Resend and the appointment before retrying.</p>
+                    </div>
+                  )}
+
                   {/* ADMIN CANCELLATION CONTROLS */}
 
                   {canCancel && (
@@ -1848,21 +1961,21 @@ const AdminAppointments = () => {
                                 </p>
 
                                 <p>
-                                  The customer will not
-                                  automatically receive a
-                                  cancellation email.
+                                  After successful cancellation, the system will attempt
+                                  to email the customer and the business.
+                                  Email acceptance does not guarantee delivery.
                                 </p>
 
                                 <p>
                                   Refunds are not automatic.
-                                  Any deposit refund must
+                                  Any deposit or balance refund must
                                   be handled separately.
                                 </p>
                               </div>
                             </div>
                           </div>
 
-                          {hasPaidDeposit && (
+                          {hasRecordedPayment && (
                             <div
                               role="alert"
                               className="rounded-lg border border-[#EBCF9D] bg-[#FFF8E9] p-4"
@@ -1875,10 +1988,10 @@ const AdminAppointments = () => {
 
                                 <p className="text-[12px] leading-5 text-[#91641E]">
                                   <strong>
-                                    Paid deposit warning:
+                                    Recorded payment warning:
                                   </strong>{' '}
                                   This customer has paid{' '}
-                                  {currency(depositPaid)}.
+                                  {currency(totalPaid)} in recorded payments.
                                   Cancelling will not
                                   automatically refund
                                   that payment. Review
@@ -1905,7 +2018,7 @@ const AdminAppointments = () => {
                                     'this customer',
                                   appointment.appointmentDate,
                                   appointment.appointmentTime,
-                                  hasPaidDeposit
+                                  hasRecordedPayment
                                 )
                               }
                               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#A5465B] px-5 py-3 text-[12px] font-semibold text-white transition-colors hover:bg-[#843648] disabled:cursor-not-allowed disabled:opacity-60"

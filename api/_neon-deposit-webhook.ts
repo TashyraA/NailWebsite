@@ -32,6 +32,7 @@ type StripeDepositEvent = {
   id?: string;
   type?: string;
   created?: number;
+  livemode?: boolean;
   data?: {
     object?: {
       id?: string;
@@ -47,6 +48,7 @@ type StripeDepositEvent = {
 
 type StripeCheckoutSession = {
   id?: string;
+  livemode?: boolean;
   mode?: string;
   status?: string;
   payment_status?: string;
@@ -58,18 +60,23 @@ type StripeCheckoutSession = {
 
 type StripeCharge = {
   id?: string;
+  livemode?: boolean;
   payment_intent?: string | null;
   status?: string;
   paid?: boolean;
   captured?: boolean;
   amount?: number;
   amount_captured?: number;
+  amount_refunded?: number;
+  refunded?: boolean;
+  disputed?: boolean;
   currency?: string;
   created?: number;
 };
 
 type StripePaymentIntent = {
   id?: string;
+  livemode?: boolean;
   status?: string;
   amount?: number;
   amount_received?: number;
@@ -127,11 +134,11 @@ function validUnixSeconds(
 async function fetchStripeResource<T>(
   path: string
 ): Promise<T> {
-  const stripeKey = process.env.STRIPE_SECRET_KEY;
+  const stripeKey = process.env.STRIPE_SECRET_KEY?.trim();
 
-  if (!stripeKey) {
+  if (!stripeKey || !/^(sk|rk)_live_[A-Za-z0-9]+$/.test(stripeKey)) {
     throw new Error(
-      'STRIPE_SECRET_KEY is not configured'
+      'A LIVE Stripe secret key is required'
     );
   }
 
@@ -142,6 +149,7 @@ async function fetchStripeResource<T>(
       headers: {
         Authorization: `Bearer ${stripeKey}`,
       },
+      redirect: 'error',
       signal: AbortSignal.timeout(8000),
     }
   );
@@ -178,6 +186,7 @@ async function verifyCheckoutSession(
 
   if (
     session.id !== sessionId ||
+    session.livemode !== true ||
     session.mode !== 'payment' ||
     session.status !== 'complete' ||
     session.payment_status !== 'paid' ||
@@ -223,6 +232,7 @@ async function verifyPaymentIntent(
 
   if (
     intent.id !== paymentIntentId ||
+    intent.livemode !== true ||
     intent.status !== 'succeeded' ||
     intent.currency !== 'usd' ||
     intent.amount !== expectedAmount ||
@@ -233,7 +243,11 @@ async function verifyPaymentIntent(
     ) ||
     !charge ||
     typeof charge.id !== 'string' ||
-    !charge.id.startsWith('ch_') ||
+    !/^ch_[A-Za-z0-9]+$/.test(charge.id) ||
+    charge.livemode !== true ||
+    charge.amount_refunded !== 0 ||
+    charge.refunded !== false ||
+    charge.disputed !== false ||
     charge.payment_intent !== paymentIntentId ||
     charge.status !== 'succeeded' ||
     charge.paid !== true ||
@@ -308,7 +322,7 @@ async function processDepositNotifications(
           'Deposit notification processing failed:',
           job.id,
           error instanceof Error
-            ? error.message
+            ? error.name
             : 'Unknown error'
         );
       }
@@ -318,7 +332,7 @@ async function processDepositNotifications(
       'Unable to load deposit notifications:',
       eventId,
       error instanceof Error
-        ? error.message
+        ? error.name
         : 'Unknown error'
     );
   }
@@ -331,6 +345,13 @@ async function processDepositNotifications(
 export async function handleNeonDepositWebhook(
   event: StripeDepositEvent
 ): Promise<NeonWebhookResult> {
+  // Never let test events alter production appointment records.
+  if (event.livemode === false) {
+    return { received: true, result: 'ignored_test_mode' };
+  }
+  if (event.livemode !== true) {
+    throw new Error('Stripe event mode is unavailable');
+  }
   const databaseUrl = process.env.DATABASE_URL;
 
   if (!databaseUrl) {
@@ -352,9 +373,9 @@ export async function handleNeonDepositWebhook(
 
   if (
     typeof eventId !== 'string' ||
-    !eventId.startsWith('evt_') ||
+    !/^evt_[A-Za-z0-9]+$/.test(eventId) ||
     typeof sessionId !== 'string' ||
-    !sessionId.startsWith('cs_')
+    !/^cs_live_[A-Za-z0-9]+$/.test(sessionId)
   ) {
     throw new Error(
       'Invalid Stripe event or session identifier'
@@ -367,12 +388,13 @@ export async function handleNeonDepositWebhook(
 
   const validPaymentIntent =
     typeof paymentIntentId === 'string' &&
-    paymentIntentId.startsWith('pi_');
+    /^pi_[A-Za-z0-9]+$/.test(paymentIntentId);
 
   const validAmount =
     typeof amountCents === 'number' &&
     Number.isSafeInteger(amountCents) &&
-    amountCents > 0;
+    amountCents >= 50 &&
+    amountCents <= 99_999_999;
 
   const validEventTime =
     validUnixSeconds(event.created);
@@ -450,6 +472,7 @@ export async function handleNeonDepositWebhook(
     session?.mode !== 'payment' ||
     session.payment_status !== 'paid' ||
     session.currency !== 'usd' ||
+    metadata.payment_type !== 'neon_appointment_deposit' ||
     !validAppointmentId ||
     !validPaymentIntent ||
     !validAmount ||
@@ -466,6 +489,30 @@ export async function handleNeonDepositWebhook(
      Permanent mismatches -> needs_review
      API/network failures -> throw for retry
   ===================================== */
+
+  const previousEvents = await sql`
+    SELECT processing_status, stripe_checkout_session_id,
+           appointment_id, payment_amount_cents
+    FROM public.salon_stripe_payment_events
+    WHERE stripe_event_id = ${eventId}
+    LIMIT 1
+  `;
+  const previous = previousEvents[0];
+  if (previous) {
+    if (previous.stripe_checkout_session_id !== sessionId ||
+        previous.appointment_id !== appointmentId ||
+        Number(previous.payment_amount_cents) !== amountCents) {
+      console.error('Deposit event identity conflict:', eventId);
+      return { received: true, result: 'needs_review' };
+    }
+    if (previous.processing_status === 'processed') {
+      await processDepositNotifications(eventId, appointmentId);
+      return { received: true, result: 'already_confirmed' };
+    }
+    if (previous.processing_status === 'needs_review') {
+      return { received: true, result: 'needs_review' };
+    }
+  }
 
   let chargeCreated: number;
 
@@ -621,9 +668,10 @@ export async function handleNeonDepositWebhook(
     ) AS result
   `;
 
-  const result = String(
-    confirmationRows[0]?.result || 'unknown'
-  );
+  const result = confirmationRows[0]?.result;
+  if (typeof result !== 'string') {
+    throw new Error('Deposit confirmation result unavailable');
+  }
 
   const accepted =
     result === 'confirmed' ||
@@ -662,6 +710,12 @@ export async function handleNeonDepositWebhook(
         EXCLUDED.processed_at,
       error_message =
         EXCLUDED.error_message
+    WHERE public.salon_stripe_payment_events.stripe_checkout_session_id
+          = EXCLUDED.stripe_checkout_session_id
+      AND public.salon_stripe_payment_events.appointment_id
+          IS NOT DISTINCT FROM EXCLUDED.appointment_id
+      AND (public.salon_stripe_payment_events.processing_status <> 'processed'
+           OR EXCLUDED.processing_status = 'processed')
   `;
 
   if (!accepted) {

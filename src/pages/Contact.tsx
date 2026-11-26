@@ -48,224 +48,32 @@ const Contact = () => {
      FORM SUBMISSION
   ========================================= */
 
-  const handleSubmit = async (
-    e: React.FormEvent<HTMLFormElement>
-  ) => {
+  const submitting = React.useRef(false);
+  const [website, setWebsite] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
     setIsSubmitting(true);
-
     try {
-      console.log('Contact form submitted:', formData);
-
-      const escapeHtml = (value: string) =>
-        value
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#39;');
-
-      const safeName = escapeHtml(formData.name);
-      const safeEmail = escapeHtml(formData.email);
-      const safePhone = escapeHtml(formData.phone);
-      const safeMessage = escapeHtml(formData.message)
-        .replace(/\r?\n/g, '<br>');
-
-      /* =====================================
-         CONTACT EMAIL HTML
-      ===================================== */
-
-      const contactEmailHtml = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8" />
-          <style>
-            body {
-              font-family: Arial, sans-serif;
-              background-color: #FFF7F8;
-              margin: 0;
-              padding: 24px;
-            }
-
-            .container {
-              max-width: 600px;
-              margin: 0 auto;
-              background: #FFFFFF;
-              border-radius: 16px;
-              overflow: hidden;
-              border: 1px solid #F7DDE4;
-            }
-
-            .header {
-              background: #963F60;
-              padding: 36px 24px;
-              text-align: center;
-            }
-
-            .header h1 {
-              color: #FFFFFF;
-              margin: 0;
-              font-size: 28px;
-              font-weight: 500;
-            }
-
-            .content {
-              padding: 32px;
-              color: #29252B;
-            }
-
-            .content h2 {
-              color: #963F60;
-              margin-top: 0;
-            }
-
-            .message {
-              background: #FFF7F8;
-              padding: 20px;
-              border-radius: 10px;
-              border-left: 3px solid #C9809B;
-              line-height: 1.7;
-              overflow-wrap: anywhere;
-            }
-
-            .footer {
-              background: #F7DDE4;
-              padding: 20px;
-              text-align: center;
-              color: #70636A;
-              font-size: 13px;
-            }
-
-            a {
-              color: #963F60;
-            }
-          </style>
-        </head>
-
-        <body>
-          <div class="container">
-
-            <div class="header">
-              <h1>New Contact Message</h1>
-            </div>
-
-            <div class="content">
-              <h2>Contact Details</h2>
-
-              <p>
-                <strong>Name:</strong>
-                ${safeName}
-              </p>
-
-              <p>
-                <strong>Email:</strong>
-                ${safeEmail}
-              </p>
-
-              ${
-                formData.phone
-                  ? `
-                    <p>
-                      <strong>Phone:</strong>
-                      ${safePhone}
-                    </p>
-                  `
-                  : ''
-              }
-
-              <h3 style="color:#963F60;">
-                Message
-              </h3>
-
-              <div class="message">
-                ${safeMessage}
-              </div>
-
-              <p style="margin-top:24px;">
-                <strong>Reply to:</strong>
-                <a href="mailto:${encodeURIComponent(formData.email)}?subject=Re%3A%20Your%20message%20to%20InLoveNailz">
-                  ${safeEmail}
-                </a>
-              </p>
-            </div>
-
-            <div class="footer">
-              <p>
-                Sent from the InLoveNailz contact form
-              </p>
-
-              <p>
-                <a href="https://www.inlovenailz.com">
-                  www.inlovenailz.com
-                </a>
-              </p>
-            </div>
-
-          </div>
-        </body>
-        </html>
-      `;
-
-      /* =====================================
-         SEND CONTACT EMAIL
-      ===================================== */
-
       const response = await fetch('/api/contact', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          to: 'brianalehota@gmail.com',
-          subject: `💌 New Contact Message from ${formData.name}`,
-          html: contactEmailHtml,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...formData, website }),
+        signal: AbortSignal.timeout(20000),
       });
-
-      if (!response.ok) {
-        console.error(
-          'Failed to send contact email:',
-          await response.text()
-        );
-
-        toast({
-          title: 'Error sending message',
-          description:
-            'There was a problem sending your message. Please try again or contact us directly.',
-          variant: 'destructive',
-        });
-
-        return;
+      const result = await response.json();
+      if (!response.ok || result?.sent !== true) {
+        throw new Error(response.status === 429 ? 'Please wait before sending another message.' : 'Unable to confirm submission. Please contact us directly if needed.');
       }
-
-      console.log('Contact email sent successfully');
-
-      toast({
-        title: 'Message sent!',
-        description:
-          "We'll get back to you as soon as possible.",
-      });
-
-      setFormData({
-        name: '',
-        email: '',
-        phone: '',
-        message: '',
-      });
+      toast({ title: 'Message sent!', description: "We'll get back to you as soon as possible." });
+      setFormData({ name: '', email: '', phone: '', message: '' });
+      setWebsite('');
     } catch (error) {
-      console.error(
-        'Contact form submission error:',
-        error
-      );
-
-      toast({
-        title: 'Error sending message',
-        description:
-          'There was a problem sending your message. Please try again or contact us directly.',
-        variant: 'destructive',
-      });
+      toast({ title: 'Message not confirmed', description: error instanceof Error && error.message === 'Please wait before sending another message.' ? error.message : 'We could not confirm your message was sent. Please contact us directly if needed.', variant: 'destructive' });
     } finally {
+      submitting.current = false;
       setIsSubmitting(false);
     }
   };
@@ -542,6 +350,10 @@ const Contact = () => {
                   onSubmit={handleSubmit}
                   className="space-y-6"
                 >
+                  <div className="hidden" aria-hidden="true">
+                    <label htmlFor="contact-website">Leave this field empty</label>
+                    <input id="contact-website" name="website" tabIndex={-1} autoComplete="off" value={website} onChange={e => setWebsite(e.target.value)} />
+                  </div>
                   {/* NAME + EMAIL */}
 
                   <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">

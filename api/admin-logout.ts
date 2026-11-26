@@ -1,3 +1,4 @@
+import { isSameOriginRequest } from './_admin-auth.js';
 
 const COOKIE_NAME = 'inlovenailz_admin_session';
 
@@ -5,7 +6,10 @@ export default async function handler(
   req: any,
   res: any
 ) {
-  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Cache-Control', 'no-store, private');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Frame-Options', 'DENY');
 
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -16,32 +20,8 @@ export default async function handler(
     });
   }
 
-  // Reject cross-origin browser requests.
-  const origin = req.headers.origin;
-  const host = req.headers.host;
-
-  if (
-    typeof origin !== 'string' ||
-    typeof host !== 'string'
-  ) {
-    return res.status(403).json({
-      success: false,
-      error: 'Invalid request origin',
-    });
-  }
-
-  let originHost: string;
-
-  try {
-    originHost = new URL(origin).host;
-  } catch {
-    return res.status(403).json({
-      success: false,
-      error: 'Invalid request origin',
-    });
-  }
-
-  if (originHost !== host) {
+  // Use the same origin validation as other admin endpoints.
+  if (!isSameOriginRequest(req)) {
     return res.status(403).json({
       success: false,
       error: 'Invalid request origin',

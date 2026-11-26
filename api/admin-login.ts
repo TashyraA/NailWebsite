@@ -7,6 +7,7 @@ import {
 } from 'node:crypto';
 
 import { neon } from '@neondatabase/serverless';
+import { isSameOriginRequest } from './_admin-auth.js';
 
 const COOKIE_NAME = 'inlovenailz_admin_session';
 const SESSION_DURATION_SECONDS = 60 * 60 * 8;
@@ -75,40 +76,12 @@ function verifyPassword(
   return timingSafeEqual(actual, expected);
 }
 
-function isAllowedOrigin(req: any): boolean {
-  const origin = req.headers.origin;
-  const host = req.headers.host;
-
-  if (
-    typeof origin !== 'string' ||
-    typeof host !== 'string'
-  ) {
-    return false;
-  }
-
-  try {
-    const originUrl = new URL(origin);
-
-    return (
-      originUrl.host === host &&
-      (
-        originUrl.protocol === 'https:' ||
-        (
-          process.env.NODE_ENV !== 'production' &&
-          originUrl.protocol === 'http:'
-        )
-      )
-    );
-  } catch {
-    return false;
-  }
-}
-
 export default async function handler(
   req: any,
   res: any
 ) {
-  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Cache-Control', 'no-store, private');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
 
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -119,7 +92,7 @@ export default async function handler(
     });
   }
 
-  if (!isAllowedOrigin(req)) {
+  if (!isSameOriginRequest(req)) {
     return res.status(403).json({
       success: false,
       error: 'Invalid request origin',
@@ -135,6 +108,8 @@ export default async function handler(
     !adminEmail ||
     !passwordHash ||
     !sessionSecret ||
+    !sessionSecret.trim() ||
+    Buffer.byteLength(sessionSecret, 'utf8') < 32 ||
     !databaseUrl
   ) {
     console.error(
@@ -234,7 +209,7 @@ export default async function handler(
       authenticated: true,
     });
   } catch (error) {
-    console.error('Admin login failed:', error);
+    console.error('Admin login failed:', error instanceof Error ? error.name : 'UnknownError');
 
     return res.status(500).json({
       success: false,

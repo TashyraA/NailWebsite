@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
 import { requireAdmin } from './_admin-auth.js';
-import { appUrl } from './_booking.js';
+import { balanceAppUrl, isValidBalanceCheckoutUrl, isPayableBalanceAmount } from './_neon-balance-payment.js';
 
 /* =========================================
    INLOVENAILZ BY BRIANA
@@ -53,6 +53,7 @@ type Appointment = {
 };
 
 type StripeSession = {
+  livemode?: boolean;
   id?: string;
   url?: string | null;
   mode?: string;
@@ -87,6 +88,9 @@ async function stripeRequest(
   params?: URLSearchParams,
   idempotencyKey?: string
 ): Promise<StripeSession> {
+  if (!/^(sk|rk)_live_[A-Za-z0-9]+$/.test(secretKey)) {
+    throw new Error('LIVE Stripe credentials required.');
+  }
   const headers: Record<string, string> = {
     Authorization: `Bearer ${secretKey}`,
   };
@@ -105,6 +109,7 @@ async function stripeRequest(
     {
       method,
       headers,
+      redirect: 'error',
       signal: AbortSignal.timeout(
         STRIPE_REQUEST_TIMEOUT_MS
       ),
@@ -119,8 +124,7 @@ async function stripeRequest(
 
   if (!response.ok) {
     throw new Error(
-      data.error?.message ||
-        `Stripe request failed (${response.status})`
+      `Stripe request failed (${response.status})`
     );
   }
 
@@ -217,6 +221,7 @@ function validSession(
   depositCents: number
 ): boolean {
   return (
+    session.livemode === true &&
     session.id ===
       appointment.stripe_checkout_session_id &&
     session.mode === 'payment' &&
@@ -269,6 +274,7 @@ function safelyExpiredUnpaid(
   session: StripeSession
 ): boolean {
   return (
+    session.livemode === true &&
     session.status === 'expired' &&
     session.payment_status === 'unpaid' &&
     !session.payment_intent
@@ -299,9 +305,9 @@ export default async function handler(
   }
 
   const databaseUrl = process.env.DATABASE_URL;
-  const stripeKey = process.env.STRIPE_SECRET_KEY;
+  const stripeKey = process.env.STRIPE_SECRET_KEY?.trim();
 
-  if (!databaseUrl || !stripeKey) {
+  if (!databaseUrl || !stripeKey || !/^(sk|rk)_live_[A-Za-z0-9]+$/.test(stripeKey)) {
     return res.status(500).json({
       success: false,
       error: 'Payment configuration is unavailable.',
@@ -400,7 +406,7 @@ export default async function handler(
     if (
       !Number.isSafeInteger(depositCents) ||
       !Number.isSafeInteger(totalCents) ||
-      depositCents < 50 ||
+      !isPayableBalanceAmount(depositCents) ||
       depositCents > totalCents
     ) {
       return res.status(409).json({
@@ -419,7 +425,7 @@ export default async function handler(
        while the server lost its response.
     ===================================== */
 
-    if (appointment.deposit_checkout_claim_id) {
+    if (appointment.deposit_checkout_claim_id !== null || appointment.deposit_checkout_claim_expires_at !== null) {
       return res.status(409).json({
         success: false,
         error:
@@ -431,7 +437,20 @@ export default async function handler(
        CHECK EXISTING STRIPE SESSION
     ===================================== */
 
+    const exceptions = await sql`
+      SELECT 1 FROM public.salon_stripe_payment_events
+      WHERE appointment_id = ${appointmentId}::uuid
+        AND processing_status = 'needs_review'
+      LIMIT 1
+    `;
+    if (exceptions.length) {
+      return res.status(409).json({ success: false, error: 'Payment review required.' });
+    }
+
     if (appointment.stripe_checkout_session_id) {
+      if (!/^cs_live_[A-Za-z0-9]+$/.test(appointment.stripe_checkout_session_id)) {
+        return res.status(409).json({ success: false, error: 'Stored checkout requires LIVE payment reconciliation.' });
+      }
       const existing = await stripeRequest(
         stripeKey,
         `/checkout/sessions/${encodeURIComponent(
@@ -458,7 +477,7 @@ export default async function handler(
         if (
           existing.payment_status === 'unpaid' &&
           !existing.payment_intent &&
-          existing.url &&
+          isValidBalanceCheckoutUrl(existing.url) &&
           safeExistingExpiration(
             existing,
             deadline
@@ -508,6 +527,7 @@ export default async function handler(
           AND stripe_checkout_session_id =
             ${appointment.stripe_checkout_session_id}
           AND deposit_checkout_claim_id IS NULL
+          AND deposit_checkout_claim_expires_at IS NULL
           AND deposit_expires_at IS NOT NULL
           AND deposit_expires_at > NOW()
           AND NOT EXISTS (
@@ -570,6 +590,7 @@ export default async function handler(
         AND stripe_payment_intent_id IS NULL
         AND stripe_checkout_session_id IS NULL
         AND deposit_checkout_claim_id IS NULL
+          AND deposit_checkout_claim_expires_at IS NULL
         AND deposit_expires_at IS NOT NULL
         AND deposit_expires_at >
           NOW() + (
@@ -647,7 +668,7 @@ export default async function handler(
       }
 
       const siteUrl =
-        appUrl().replace(/\/+$/, '');
+        balanceAppUrl();
 
       const params = new URLSearchParams({
         mode: 'payment',
@@ -695,8 +716,9 @@ export default async function handler(
 
       if (
         !createdSession.id ||
-        !createdSession.id.startsWith('cs_') ||
-        !createdSession.url ||
+        !/^cs_live_[A-Za-z0-9]+$/.test(createdSession.id) ||
+        createdSession.livemode !== true ||
+        !isValidBalanceCheckoutUrl(createdSession.url) ||
         createdSession.mode !== 'payment' ||
         createdSession.status !== 'open' ||
         createdSession.payment_status !== 'unpaid' ||
@@ -803,7 +825,7 @@ export default async function handler(
       if (
         stripeCreationAttempted &&
         createdSession?.id &&
-        createdSession.id.startsWith('cs_')
+        /^cs_live_[A-Za-z0-9]+$/.test(createdSession.id)
       ) {
         try {
           const sessionPath =
@@ -819,6 +841,12 @@ export default async function handler(
 
           if (
             latest.id === createdSession.id &&
+            latest.livemode === true &&
+            latest.mode === 'payment' &&
+            latest.metadata?.appointment_id === appointmentId &&
+            latest.metadata?.payment_type === 'neon_appointment_deposit' &&
+            latest.amount_total === depositCents &&
+            latest.currency === 'usd' &&
             latest.status === 'open' &&
             latest.payment_status === 'unpaid' &&
             !latest.payment_intent
@@ -838,6 +866,7 @@ export default async function handler(
 
           if (
             latest.id === createdSession.id &&
+            latest.mode === 'payment' &&
             latest.metadata?.appointment_id ===
               appointmentId &&
             latest.metadata?.payment_type ===
@@ -852,7 +881,7 @@ export default async function handler(
           console.error(
             'Stripe Checkout requires reconciliation:',
             createdSession.id,
-            expireError
+            expireError instanceof Error ? expireError.name : 'Unknown error'
           );
         }
       }
@@ -885,7 +914,7 @@ export default async function handler(
           console.error(
             'Safe Checkout claim cleanup failed:',
             appointmentId,
-            cleanupError
+            cleanupError instanceof Error ? cleanupError.name : 'Unknown error'
           );
         }
       } else {
@@ -905,7 +934,7 @@ export default async function handler(
   } catch (error) {
     console.error(
       'Admin deposit checkout error:',
-      error
+      error instanceof Error ? error.name : 'Unknown error'
     );
 
     return res.status(500).json({
