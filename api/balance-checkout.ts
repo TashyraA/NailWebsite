@@ -457,6 +457,7 @@ export default async function handler(
   let returnUrl: string | undefined;
   let verificationUrl: string | undefined;
   let activeClaimId: string | null = null;
+  let stage = 'request_validation';
 
   /* =====================================
      REQUIRE EXPLICIT POST REQUEST
@@ -615,6 +616,7 @@ export default async function handler(
        and unresolved events together.
     ===================================== */
 
+    stage = 'appointment_lookup';
     const rows = await sql`
       SELECT
         appointment.id,
@@ -826,6 +828,7 @@ export default async function handler(
         );
       }
 
+      stage = 'existing_session_lookup';
       const existingSession =
         await retrieveBalanceSession(
           existingSessionId
@@ -988,6 +991,7 @@ export default async function handler(
 
     const params = new URLSearchParams({
       mode: 'payment',
+      'adaptive_pricing[enabled]': 'false',
 
       'payment_method_types[0]': 'card',
 
@@ -1041,6 +1045,7 @@ export default async function handler(
        before allowing Stripe creation.
     ===================================== */
 
+    stage = 'claim_creation';
     const claimRows = await sql`
       UPDATE public.appointment_requests
 
@@ -1124,6 +1129,7 @@ export default async function handler(
        not release the claim automatically.
     ===================================== */
 
+    stage = 'stripe_creation';
     const session =
       await balanceStripeRequest<BalanceStripeSession>(
         '/checkout/sessions',
@@ -1139,28 +1145,24 @@ export default async function handler(
        VERIFY NEW STRIPE SESSION
     ===================================== */
 
-    if (
-      !isLiveSessionId(session.id) ||
-
-      session.id ===
-        appointment.stripe_checkout_session_id ||
-
-      session.id === existingSessionId ||
-
-      !validSession(
-        session,
-        appointmentId,
-        session.id,
-        amounts.balanceDueCents
-      ) ||
-
-      !reusableSession(session) ||
-
-      session.expires_at !== expiresAt
-    ) {
-      throw new Error(
-        'Created balance checkout requires verification.'
-      );
+    stage = 'created_session_validation';
+    const failures: string[] = [];
+    if (!isLiveSessionId(session.id)) failures.push('invalid_live_session_id');
+    if (session.id === appointment.stripe_checkout_session_id || session.id === existingSessionId) failures.push('session_id_reused');
+    if (session.livemode !== true) failures.push('not_live');
+    if (session.mode !== 'payment') failures.push('invalid_mode');
+    if (session.currency !== 'usd') failures.push('currency_mismatch');
+    if (session.amount_total !== amounts.balanceDueCents) failures.push('amount_mismatch');
+    if (session.metadata?.payment_type !== BALANCE_PAYMENT_TYPE) failures.push('payment_type_mismatch');
+    if (session.metadata?.appointment_id !== appointmentId) failures.push('appointment_mismatch');
+    if (session.status !== 'open') failures.push('not_open');
+    if (session.payment_status !== 'unpaid') failures.push('not_unpaid');
+    if (session.payment_intent !== null) failures.push('unexpected_payment_intent');
+    if (session.expires_at !== expiresAt || !Number.isSafeInteger(session.expires_at) || session.expires_at <= Math.floor(Date.now() / 1000) + 60) failures.push('expiration_mismatch');
+    if (!isValidBalanceCheckoutUrl(session.url)) failures.push('invalid_checkout_url');
+    if (failures.length) {
+      console.error('Created balance checkout validation failed.', { appointmentId, claimId, failures });
+      throw new Error('Created balance checkout requires verification.');
     }
 
     const checkoutUrl = session.url;
@@ -1185,6 +1187,7 @@ export default async function handler(
        must still match the original snapshot.
     ===================================== */
 
+    stage = 'session_attachment';
     const attachedRows = await sql`
       UPDATE public.appointment_requests
 
@@ -1301,6 +1304,7 @@ export default async function handler(
     console.error(
       'Balance checkout request failed.',
       {
+        stage,
         errorType:
           error instanceof Error
             ? error.name

@@ -637,6 +637,7 @@ export default async function handler(
 
     let createdSession: StripeSession | null = null;
     let stripeCreationAttempted = false;
+    let checkoutStage = 'prepare_checkout';
 
     try {
       const claimedAppointment =
@@ -672,6 +673,7 @@ export default async function handler(
 
       const params = new URLSearchParams({
         mode: 'payment',
+        'adaptive_pricing[enabled]': 'false',
 
         'payment_method_types[0]': 'card',
 
@@ -704,6 +706,7 @@ export default async function handler(
         expires_at: String(expiresAt),
       });
 
+      checkoutStage = 'create_session';
       stripeCreationAttempted = true;
 
       createdSession = await stripeRequest(
@@ -714,27 +717,23 @@ export default async function handler(
         `inl-deposit-${claimId}`
       );
 
-      if (
-        !createdSession.id ||
-        !/^cs_live_[A-Za-z0-9]+$/.test(createdSession.id) ||
-        createdSession.livemode !== true ||
-        !isValidBalanceCheckoutUrl(createdSession.url) ||
-        createdSession.mode !== 'payment' ||
-        createdSession.status !== 'open' ||
-        createdSession.payment_status !== 'unpaid' ||
-        createdSession.payment_intent ||
-        createdSession.amount_total !==
-          depositCents ||
-        createdSession.currency !== 'usd' ||
-        createdSession.expires_at !== expiresAt ||
-        createdSession.metadata?.appointment_id !==
-          appointmentId ||
-        createdSession.metadata?.payment_type !==
-          'neon_appointment_deposit'
-      ) {
-        throw new Error(
-          'Stripe returned an unexpected Checkout Session.'
-        );
+      checkoutStage = 'validate_session';
+      const validationFailures: string[] = [];
+      if (!createdSession.id || !/^cs_live_[A-Za-z0-9]+$/.test(createdSession.id)) validationFailures.push('session_id');
+      if (createdSession.livemode !== true) validationFailures.push('livemode');
+      if (!isValidBalanceCheckoutUrl(createdSession.url)) validationFailures.push('checkout_url');
+      if (createdSession.mode !== 'payment') validationFailures.push('mode');
+      if (createdSession.status !== 'open') validationFailures.push('status');
+      if (createdSession.payment_status !== 'unpaid') validationFailures.push('payment_status');
+      if (createdSession.payment_intent) validationFailures.push('payment_intent');
+      if (createdSession.amount_total !== depositCents) validationFailures.push('amount_total');
+      if (createdSession.currency !== 'usd') validationFailures.push('currency');
+      if (createdSession.expires_at !== expiresAt) validationFailures.push('expires_at');
+      if (createdSession.metadata?.appointment_id !== appointmentId) validationFailures.push('appointment_id');
+      if (createdSession.metadata?.payment_type !== 'neon_appointment_deposit') validationFailures.push('payment_type');
+      if (validationFailures.length) {
+        console.error('Deposit checkout validation failed:', { appointmentId, checks: validationFailures });
+        throw new Error('Stripe returned an unexpected Checkout Session.');
       }
 
       /* =====================================
@@ -748,6 +747,7 @@ export default async function handler(
          exception has been recorded.
       ===================================== */
 
+      checkoutStage = 'attach_session';
       const attached = await sql`
         UPDATE public.appointment_requests
         SET
@@ -785,6 +785,7 @@ export default async function handler(
       `;
 
       if (!attached.length) {
+        console.error('Deposit checkout attachment matched no rows:', { appointmentId });
         throw new Error(
           'Appointment changed during Checkout creation.'
         );
@@ -800,6 +801,7 @@ export default async function handler(
           'Deposit checkout created. Payment is collected only when the customer completes Stripe Checkout.',
       });
     } catch (error) {
+      console.error('Deposit checkout failed at stage:', { appointmentId, stage: checkoutStage });
       /* =====================================
          SAFE CLAIM CLEANUP
 

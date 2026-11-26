@@ -931,12 +931,21 @@ export default async function handler(
       booking.customerPhone
     );
 
+    // Format validated appointment values for email display only.
+    // UTC is used for the calendar date to prevent timezone shifts.
     const appointmentDate = escapeHtml(
-      booking.appointmentDate
+      new Intl.DateTimeFormat('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        timeZone: 'UTC',
+      }).format(new Date(`${booking.appointmentDate}T00:00:00Z`))
     );
 
+    // Appointment time is already the salon's Eastern wall-clock time.
+    const [hours, minutes] = booking.appointmentTime.split(':').map(Number);
     const appointmentTime = escapeHtml(
-      booking.appointmentTime
+      `${hours % 12 || 12}:${String(minutes).padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`
     );
 
     const safeAppointmentId = escapeHtml(

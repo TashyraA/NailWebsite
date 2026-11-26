@@ -554,9 +554,18 @@ async function sendCancellationEmail(
 
 async function notifyCancellation(appointment: CancellationResult, reason: string, refundReview: boolean, totalPaid: number | null) {
   const safe = (value: unknown) => escapeHtml(String(value ?? ''));
+  const date = new Date(`${appointment.appointment_date}T12:00:00Z`);
+  const dateLabel = Number.isFinite(date.getTime())
+    ? date.toLocaleDateString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric' })
+    : appointment.appointment_date;
+  const timeMatch = /^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d(?:\.\d+)?)?$/.exec(appointment.appointment_time);
+  const hour = timeMatch ? Number(timeMatch[1]) : 0;
+  const timeLabel = timeMatch
+    ? `${hour % 12 || 12}:${timeMatch[2]} ${hour >= 12 ? 'PM' : 'AM'}`
+    : appointment.appointment_time;
   const details = `<p><strong>Customer:</strong> ${safe(appointment.customer_name)}</p>
-    <p><strong>Date:</strong> ${safe(appointment.appointment_date)}</p>
-    <p><strong>Time:</strong> ${safe(appointment.appointment_time)}</p>`;
+    <p><strong>Date:</strong> ${safe(dateLabel)}</p>
+    <p><strong>Time:</strong> ${safe(timeLabel)}</p>`;
   const wrap = (body: string) => `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;color:#29252B"><h2 style="color:#963F60">InLoveNailz by Briana</h2>${body}<p>With love,<br>InLoveNailz by Briana</p></div>`;
   const customer = wrap(`<p>Hi ${safe(appointment.customer_name)},</p><p>Your nail appointment has been cancelled.</p>${details}${refundReview ? '<p>If you have made a payment, please contact us regarding any applicable refund. No automatic refund has been issued.</p>' : ''}<p>We apologize for any inconvenience.</p>`);
   const business = wrap(`<p>An appointment has been cancelled through your admin dashboard.</p>${details}<p><strong>Reason:</strong> ${safe(reason)}</p><p><strong>Recorded payments:</strong> ${totalPaid === null ? 'Review required' : '$' + totalPaid.toFixed(2)}</p><p>Refund review: ${refundReview ? 'Required' : 'Not required based on recorded payments'}. No automatic refund has been issued.</p>`);

@@ -453,6 +453,73 @@ const AdminAppointments = () => {
     ]);
   };
 
+  // Called only while the caller holds the admin action lock.
+  const completeDepositWorkflow = async (appointmentId: string): Promise<void> => {
+    setSendingId(appointmentId);
+    setPaymentStage('checkout');
+    setPaymentErrors(previous => ({ ...previous, [appointmentId]: '' }));
+    let checkoutReady = false;
+
+    try {
+      const checkout = await createDepositCheckout(
+        appointmentId
+      );
+
+      if (
+        typeof checkout.checkoutUrl !== 'string' ||
+        !checkout.checkoutUrl
+      ) {
+        throw new Error(
+          'Stripe checkout did not return a valid payment link. Review the checkout before retrying.'
+        );
+      }
+
+      const checkoutUrl = new URL(
+        checkout.checkoutUrl
+      );
+
+      if (
+        checkoutUrl.protocol !== 'https:' ||
+        checkoutUrl.hostname !== 'checkout.stripe.com'
+      ) {
+        throw new Error(
+          'The server returned an unexpected checkout URL. The payment email was not requested.'
+        );
+      }
+
+      checkoutReady = true;
+
+      setPaymentStage('email');
+
+      const emailResult = await sendDepositPaymentLink(
+        appointmentId
+      );
+
+      if (emailResult.emailAccepted !== true) {
+        throw new Error(
+          'The email provider did not confirm acceptance of the payment email.'
+        );
+      }
+
+      setEmailAccepted(previous => ({
+        ...previous,
+        [appointmentId]: true,
+      }));
+    } catch (caughtError) {
+      const message =
+        caughtError instanceof Error
+          ? caughtError.message
+          : 'Unable to complete the deposit payment workflow.';
+
+      setPaymentErrors(previous => ({
+        ...previous,
+        [appointmentId]: checkoutReady
+          ? `Stripe checkout is ready, but email acceptance could not be confirmed. ${message} Check Stripe and Resend before retrying.`
+          : `Checkout could not be confirmed. ${message} Check Stripe before retrying.`,
+      }));
+    }
+  };
+
   const handleDecision = async (
     appointmentId: string,
     customerName: string,
@@ -494,7 +561,7 @@ const AdminAppointments = () => {
       const confirmed = window.confirm(
         `Approve the appointment request for ${customerName} with a ${currency(
           parsed
-        )} deposit?\n\nThe request will move to Awaiting Deposit.\n\nNo payment link will be created or emailed until you select Create Checkout & Send Link.\n\nThe appointment will NOT be confirmed yet.`
+        )} deposit?\n\nThe request will move to Awaiting Deposit.\n\nA secure Stripe checkout will be created and the deposit payment link emailed automatically. Keep this page open until the result appears.\n\nThe appointment will NOT be confirmed yet.`
       );
 
       if (!confirmed) return;
@@ -522,13 +589,17 @@ const AdminAppointments = () => {
         ? result.customerEmailAccepted === true
           ? 'Appointment declined. Resend accepted the customer email. Delivery is not confirmed.'
           : 'Appointment declined. Customer email acceptance was not confirmed. Review Resend and follow up by email if needed. Do not repeat the decline.'
-        : result.message || 'Appointment approved and awaiting deposit.';
+        : 'Appointment approved and awaiting deposit.';
 
       setDecisionSuccess(previous => ({
         ...previous,
         [appointmentId]: message,
       }));
       setStatusFilter('all');
+
+      if (action === 'approve') {
+        await completeDepositWorkflow(appointmentId);
+      }
 
       try {
         await refreshAppointments();
@@ -546,9 +617,12 @@ const AdminAppointments = () => {
             ? caughtError.message
             : 'Unable to update the appointment.',
       }));
+      try { await refreshAppointments(); } catch { /* Review current status before retrying. */ }
     } finally {
       actionLock.current = false;
       setProcessingId(null);
+      setSendingId(null);
+      setPaymentStage(null);
     }
   };
 
@@ -613,7 +687,7 @@ const AdminAppointments = () => {
     }
 
     const confirmed = window.confirm(
-      `Create or reuse a Stripe checkout for ${customerName}?\n\nDeposit: ${currency(
+      `Recover the deposit payment email for ${customerName}? Confirm that you have reviewed Stripe and Resend before continuing.\n\nDeposit: ${currency(
         depositAmount
       )}\nEmail: ${customerEmail}\n\nThe payment link will be emailed to the customer.\n\nThis uses your live Stripe payment system. The customer will not be charged until they complete checkout.\n\nContinue?`
     );
@@ -626,65 +700,8 @@ const AdminAppointments = () => {
     setSendingId(appointmentId);
     setPaymentStage('checkout');
 
-    let checkoutReady = false;
-
     try {
-      const checkout = await createDepositCheckout(
-        appointmentId
-      );
-
-      if (
-        typeof checkout.checkoutUrl !== 'string' ||
-        !checkout.checkoutUrl
-      ) {
-        throw new Error(
-          'Stripe checkout did not return a valid payment link. Review the checkout before retrying.'
-        );
-      }
-
-      const checkoutUrl = new URL(
-        checkout.checkoutUrl
-      );
-
-      if (
-        checkoutUrl.protocol !== 'https:' ||
-        checkoutUrl.hostname !== 'checkout.stripe.com'
-      ) {
-        throw new Error(
-          'The server returned an unexpected checkout URL. The payment email was not requested.'
-        );
-      }
-
-      checkoutReady = true;
-
-      setPaymentStage('email');
-
-      const emailResult = await sendDepositPaymentLink(
-        appointmentId
-      );
-
-      if (emailResult.emailAccepted !== true) {
-        throw new Error(
-          'The email provider did not confirm acceptance of the payment email.'
-        );
-      }
-
-      setEmailAccepted(previous => ({
-        ...previous,
-        [appointmentId]: true,
-      }));
-    } catch (caughtError) {
-      const message =
-        caughtError instanceof Error
-          ? caughtError.message
-          : 'Unable to complete the deposit payment workflow.';
-
-      setPaymentErrors(previous => ({
-        ...previous,
-        [appointmentId]: checkoutReady
-          ? `Stripe checkout is ready, but email acceptance could not be confirmed. ${message} Check Stripe and Resend before retrying.`
-          : `Checkout could not be confirmed. ${message} Check Stripe before retrying.`,
-      }));
+      await completeDepositWorkflow(appointmentId);
     } finally {
       try {
         await refreshAppointments();
@@ -1387,7 +1404,7 @@ const AdminAppointments = () => {
                             </div>
                           )}
                           <div className="rounded-lg bg-white p-3 text-[11px] leading-5 text-[#786A72]">
-                            {needsReview ? 'Payment records require reconciliation before further actions.' : appointment.status === 'cancelled' ? 'Historical payment records only. No balance should be collected for a cancelled appointment.' : paidInFull ? 'Full payment recorded.' : blocked ? 'Checkout activity requires review before further actions.' : appointment.canPayBalanceOnline ? 'Remaining balance is eligible for online payment. Email delivery is not verified here.' : appointment.hasPaidDeposit ? 'Deposit recorded. Contact the customer if the balance cannot be paid online.' : isAwaitingDeposit ? wasEmailAccepted ? 'Payment email accepted. Awaiting customer payment.' : 'Awaiting deposit. Use the deposit payment controls below.' : 'No deposit payment recorded.'}
+                            {needsReview ? 'Payment records require reconciliation before further actions.' : appointment.status === 'cancelled' ? 'Historical payment records only. No balance should be collected for a cancelled appointment.' : paidInFull ? 'Full payment recorded.' : blocked ? 'Checkout activity requires review before further actions.' : appointment.canPayBalanceOnline ? 'Remaining balance is eligible for online payment. Email delivery is not verified here.' : appointment.hasPaidDeposit ? 'Deposit recorded. Contact the customer if the balance cannot be paid online.' : isAwaitingDeposit ? wasEmailAccepted ? 'Payment email accepted. Awaiting customer payment.' : 'Awaiting deposit. Check Resend if email acceptance is unknown; recovery is available below.' : 'No deposit payment recorded.'}
                           </div>
                           {blocked && (
                             <div role="alert" className="rounded-lg border border-[#EBCF9D] bg-[#FFF8E9] p-3 text-xs text-[#91641E]">
@@ -1526,10 +1543,9 @@ const AdminAppointments = () => {
                             <strong>
                               Awaiting Deposit
                             </strong>
-                            . No payment link or customer
-                            notification will be sent until
-                            you select Create Checkout &amp;
-                            Send Link. The appointment is
+                            . The deposit payment link will be
+                            emailed automatically after approval.
+                            Keep this page open until the result appears. The appointment is
                             not confirmed until the Stripe
                             payment workflow is completed.
                           </p>
@@ -1575,7 +1591,7 @@ const AdminAppointments = () => {
                             <CheckCircle2 size={17} />
                           )}
 
-                          Approve Request
+                          {isSending ? (paymentStage === 'email' ? 'Sending Deposit Email...' : 'Creating Checkout...') : 'Approve & Email Deposit Link'}
                         </button>
 
                         <button
@@ -1624,11 +1640,10 @@ const AdminAppointments = () => {
                           </h4>
 
                           <p className="mt-1 max-w-xl text-[12px] leading-5 text-[#786A72]">
-                            Create a secure Stripe checkout
-                            and email the deposit payment
-                            link to the customer. An
-                            eligible existing checkout will
-                            be reused by the server.
+                            Deposit links are emailed automatically on approval.
+                            If the process was interrupted or failed, review Stripe
+                            and Resend before using the recovery action below.
+                            An eligible existing checkout will be reused.
                           </p>
                         </div>
                       </div>
@@ -1720,21 +1735,6 @@ const AdminAppointments = () => {
                         </div>
                       )}
 
-                      {paymentErrors[
-                        appointment.id
-                      ] && (
-                        <div
-                          role="alert"
-                          className={errorClass}
-                        >
-                          {
-                            paymentErrors[
-                              appointment.id
-                            ]
-                          }
-                        </div>
-                      )}
-
                       {isSending && (
                         <div
                           role="status"
@@ -1794,7 +1794,7 @@ const AdminAppointments = () => {
                               : 'Creating Checkout...'
                             : wasEmailAccepted
                               ? 'Payment Email Accepted'
-                              : 'Create Checkout & Send Link'}
+                              : 'Recover Deposit Email'}
                         </button>
                       </div>
 
@@ -2063,6 +2063,21 @@ const AdminAppointments = () => {
                       )}
                     </div>
                   )}
+
+                      {paymentErrors[
+                        appointment.id
+                      ] && (
+                        <div
+                          role="alert"
+                          className={errorClass}
+                        >
+                          {
+                            paymentErrors[
+                              appointment.id
+                            ]
+                          }
+                        </div>
+                      )}
 
                   {/* DECISION SUCCESS MESSAGE */}
 

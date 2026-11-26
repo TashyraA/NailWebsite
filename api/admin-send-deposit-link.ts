@@ -2,6 +2,7 @@ import { neon } from '@neondatabase/serverless';
 
 import { requireAdmin } from './_admin-auth.js';
 import { escapeHtml } from './_email.js';
+import { isPayableBalanceAmount, isValidBalanceCheckoutUrl } from './_neon-balance-payment.js';
 
 /* =========================================
    INLOVENAILZ BY BRIANA
@@ -39,8 +40,8 @@ type Appointment = {
 };
 
 type StripeSession = {
-  livemode?: boolean;
   id?: string;
+  livemode?: boolean;
   url?: string | null;
   mode?: string;
   status?: string;
@@ -68,7 +69,7 @@ type ProcessingStage =
   | 'stripe_session_lookup'
   | 'stripe_session_validation'
   | 'email_preparation'
-  | 'final_appointment_check'
+  | 'final_appointment_verification'
   | 'resend_request'
   | 'resend_response'
   | 'complete';
@@ -99,34 +100,10 @@ function money(cents: number): string {
 function validEmail(value: unknown): boolean {
   return (
     typeof value === 'string' &&
-    value.trim().length <= 254 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
       value.trim()
     )
   );
-}
-
-function validCheckoutUrl(
-  value: unknown
-): value is string {
-  if (typeof value !== 'string') {
-    return false;
-  }
-
-  try {
-    const url = new URL(value);
-
-    return (
-      url.protocol === 'https:' &&
-      url.hostname === 'checkout.stripe.com' &&
-      !url.username &&
-      !url.password &&
-      !url.port &&
-      url.pathname.startsWith('/c/pay/')
-    );
-  } catch {
-    return false;
-  }
 }
 
 export default async function handler(
@@ -161,7 +138,7 @@ export default async function handler(
     missingConfiguration.push('DATABASE_URL');
   }
 
-  if (!stripeKey || !/^(?:sk|rk)_live_[A-Za-z0-9]+$/.test(stripeKey.trim())) {
+  if (!stripeKey?.trim()) {
     missingConfiguration.push('STRIPE_SECRET_KEY');
   }
 
@@ -185,9 +162,14 @@ export default async function handler(
     });
   }
 
-  const rawAppointmentId = req.body?.appointmentId;
-  const appointmentId = typeof rawAppointmentId === 'string'
-    ? rawAppointmentId.toLowerCase() : rawAppointmentId;
+  if (!/^(sk|rk)_live_[A-Za-z0-9]+$/.test(stripeKey!.trim())) {
+    return res.status(500).json({
+      success: false,
+      error: 'LIVE Stripe configuration is required.',
+    });
+  }
+
+  const appointmentId = req.body?.appointmentId;
 
   if (
     typeof appointmentId !== 'string' ||
@@ -223,12 +205,12 @@ export default async function handler(
         customer_name,
         customer_email,
         appointment_date::text AS appointment_date,
-        appointment_time,
+        appointment_time::text AS appointment_time,
         status,
         total_price,
         deposit_amount,
         deposit_paid_at,
-        deposit_expires_at,
+        deposit_expires_at::text AS deposit_expires_at,
         stripe_checkout_session_id,
         stripe_payment_intent_id,
         deposit_checkout_claim_id,
@@ -293,8 +275,7 @@ export default async function handler(
     if (
       !Number.isSafeInteger(depositCents) ||
       !Number.isSafeInteger(totalCents) ||
-      depositCents < 50 ||
-      depositCents > 99_999_999 ||
+      !isPayableBalanceAmount(depositCents) ||
       depositCents > totalCents
     ) {
       return res.status(409).json({
@@ -466,7 +447,7 @@ export default async function handler(
       }
     }
 
-    if (!validCheckoutUrl(session.url)) {
+    if (!isValidBalanceCheckoutUrl(session.url)) {
       validationFailures.push('invalid_checkout_url');
     }
 
@@ -486,7 +467,7 @@ export default async function handler(
       });
     }
 
-    if (!validCheckoutUrl(session.url)) {
+    if (!isValidBalanceCheckoutUrl(session.url)) {
       return res.status(409).json({
         success: false,
         error: 'The Stripe checkout URL is invalid.',
@@ -499,13 +480,18 @@ export default async function handler(
       String(appointment.customer_name ?? 'Customer')
     );
 
-    const appointmentDate = escapeHtml(
-      String(appointment.appointment_date ?? '')
-    );
-
-    const appointmentTime = escapeHtml(
-      String(appointment.appointment_time ?? '')
-    );
+    const date = new Date(`${appointment.appointment_date}T12:00:00Z`);
+    const appointmentDate = escapeHtml(Number.isFinite(date.getTime())
+      ? date.toLocaleDateString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric' })
+      : String(appointment.appointment_date ?? ''));
+    const time = /^(\d{2}):(\d{2})/.exec(String(appointment.appointment_time));
+    const hour = time ? Number(time[1]) : 0;
+    const appointmentTime = escapeHtml(time
+      ? `${hour % 12 || 12}:${time[2]} ${hour >= 12 ? 'PM' : 'AM'} ET`
+      : String(appointment.appointment_time ?? ''));
+    const paymentDeadline = escapeHtml(new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York', dateStyle: 'long', timeStyle: 'short',
+    }).format(new Date(Math.min(deadlineMs, session.expires_at! * 1000))) + ' ET');
 
     const checkoutUrl = escapeHtml(session.url);
 
@@ -534,7 +520,8 @@ export default async function handler(
           <strong>Date:</strong> ${appointmentDate}<br />
           <strong>Time:</strong> ${appointmentTime}<br />
           <strong>Service Total:</strong> ${money(totalCents)}<br />
-          <strong>Deposit Required:</strong> ${money(depositCents)}
+          <strong>Deposit Required:</strong> ${money(depositCents)}<br />
+          <strong>Pay by:</strong> ${paymentDeadline}
         </p>
 
         <p>
@@ -586,37 +573,38 @@ export default async function handler(
       </div>
     `;
 
-    logStage('final_appointment_check');
-
+    logStage('final_appointment_verification');
     const currentRows = await sql`
-      SELECT id FROM public.appointment_requests
-      WHERE id = ${appointmentId}::uuid
-        AND status = 'awaiting_deposit'
-        AND deposit_paid_at IS NULL
-        AND stripe_payment_intent_id IS NULL
-        AND deposit_checkout_claim_id IS NULL
-        AND deposit_checkout_claim_expires_at IS NULL
-        AND stripe_checkout_session_id = ${sessionId}
-        AND total_price = ${totalCents / 100}
-        AND deposit_amount = ${depositCents / 100}
-        AND customer_name IS NOT DISTINCT FROM ${appointment.customer_name}
-        AND customer_email = ${appointment.customer_email}
-        AND appointment_date::text = ${appointment.appointment_date}
-        AND appointment_time::text = ${String(appointment.appointment_time)}
-        AND deposit_expires_at > NOW()
-        AND deposit_expires_at >= to_timestamp(${session.expires_at})
+      SELECT a.id
+      FROM public.appointment_requests a
+      WHERE a.id = ${appointmentId}::uuid
+        AND a.status = 'awaiting_deposit'
+        AND a.deposit_paid_at IS NULL
+        AND a.stripe_payment_intent_id IS NULL
+        AND a.deposit_checkout_claim_id IS NULL
+        AND a.deposit_checkout_claim_expires_at IS NULL
+        AND a.stripe_checkout_session_id = ${sessionId}
+        AND a.total_price = ${totalCents / 100}::numeric
+        AND a.deposit_amount = ${depositCents / 100}::numeric
+        AND a.deposit_expires_at = ${String(appointment.deposit_expires_at)}::timestamptz
+        AND a.deposit_expires_at > now()
+        AND to_timestamp(${session.expires_at!}::double precision) > now()
+        AND a.customer_email IS NOT DISTINCT FROM ${appointment.customer_email}
+        AND a.customer_name IS NOT DISTINCT FROM ${appointment.customer_name}
+        AND a.appointment_date::text = ${appointment.appointment_date}
+        AND a.appointment_time::text = ${String(appointment.appointment_time)}
         AND NOT EXISTS (
-          SELECT 1 FROM public.salon_stripe_payment_events
-          WHERE appointment_id = ${appointmentId}::uuid
-            AND processing_status = 'needs_review'
+          SELECT 1 FROM public.salon_stripe_payment_events e
+          WHERE e.appointment_id = a.id
+            AND e.processing_status = 'needs_review'
         )
       LIMIT 1
     `;
 
-    if (!currentRows.length || session.expires_at! <= Math.floor(Date.now() / 1000)) {
+    if (!currentRows.length || session.expires_at! * 1000 <= Date.now()) {
       return res.status(409).json({
         success: false,
-        error: 'Appointment or checkout state changed. Review before emailing.',
+        error: 'Appointment or checkout changed before emailing. Review before retrying.',
       });
     }
 
@@ -668,7 +656,7 @@ export default async function handler(
     if (
       !resendResponse.ok ||
       typeof emailResult.id !== 'string' ||
-      !emailResult.id.trim()
+      !emailResult.id
     ) {
       console.error(
         '[Admin Deposit Email] Resend acceptance failed',
