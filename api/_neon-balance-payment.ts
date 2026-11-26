@@ -525,7 +525,6 @@ export function isValidBalanceCheckoutUrl(
     if (url.username) checks.push('username');
     if (url.password) checks.push('password');
     if (url.port) checks.push('port');
-    if (!url.pathname.startsWith('/c/pay/')) checks.push('path');
 
     if (checks.length) {
       console.error('Stripe checkout URL rejected:', { checks });
