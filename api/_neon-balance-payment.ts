@@ -509,26 +509,32 @@ export function formatBalanceMoney(
 export function isValidBalanceCheckoutUrl(
   value: unknown
 ): value is string {
-  if (
-    typeof value !== 'string' ||
-    !value
-  ) {
+  if (typeof value !== 'string' || !value) {
+    console.error('Stripe checkout URL rejected:', {
+      checks: [typeof value !== 'string' ? 'not_string' : 'empty'],
+    });
     return false;
   }
 
   try {
     const url = new URL(value);
+    const checks: string[] = [];
 
-    return (
-      url.protocol === 'https:' &&
-      url.hostname ===
-        'checkout.stripe.com' &&
-      !url.username &&
-      !url.password &&
-      !url.port &&
-      url.pathname.startsWith('/c/pay/')
-    );
+    if (url.protocol !== 'https:') checks.push('protocol');
+    if (url.hostname !== 'checkout.stripe.com') checks.push('hostname');
+    if (url.username) checks.push('username');
+    if (url.password) checks.push('password');
+    if (url.port) checks.push('port');
+    if (!url.pathname.startsWith('/c/pay/')) checks.push('path');
+
+    if (checks.length) {
+      console.error('Stripe checkout URL rejected:', { checks });
+    }
+    return checks.length === 0;
   } catch {
+    console.error('Stripe checkout URL rejected:', {
+      checks: ['invalid_url'],
+    });
     return false;
   }
 }
